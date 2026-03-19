@@ -1,0 +1,57 @@
+version: '3.8'
+
+# Development stack: postgres + backend (hot-reload via tsx watch).
+# Frontend is intentionally NOT here — run it on the host with:
+#   cd frontend && npm run dev
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   cd frontend && npm run dev
+#
+# The postgres_data volume name matches docker-compose.prod.yml so dev
+# data can be used in production without a separate migration step.
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: family-tree-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-familytree}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-familytree_secret}
+      POSTGRES_DB:       ${POSTGRES_DB:-familytree}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-familytree}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend with hot-reload (tsx watch) ──────────────────────────────────────
+  backend:
+    image: node:20-alpine
+    working_dir: /app
+    # Mount source so tsx watch picks up changes without rebuilding the image
+    command: sh -c "npm install && npx prisma generate && npm run dev"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-familytree}:${POSTGRES_PASSWORD:-familytree_secret}@postgres:5432/${POSTGRES_DB:-familytree}
+    env_file: ./backend/.env
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      # Isolate node_modules from host to avoid cross-platform conflicts
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  # Same name as docker-compose.prod.yml — data is shared between environments
+  postgres_data:

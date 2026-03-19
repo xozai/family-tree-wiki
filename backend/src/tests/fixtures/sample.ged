@@ -1,0 +1,92 @@
+0 HEAD
+1 SOUR FamilyTreeWiki
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I001@ INDI
+1 NAME John William /Smith/
+1 SEX M
+1 BIRT
+2 DATE 15 JUN 1920
+2 PLAC London, England
+1 DEAT
+2 DATE ABT 1985
+2 PLAC Manchester, England
+1 OCCU Carpenter
+1 NOTE He was a skilled craftsman.
+2 CONT He served in World War II.
+2 CONC  He returned home in 1945.
+0 @I002@ INDI
+1 NAME Mary Elizabeth /Jones/
+1 SEX F
+1 BIRT
+2 DATE 3 MAR 1922
+2 PLAC Dublin, Ireland
+1 DEAT
+2 DATE BEF 1990
+0 @I003@ INDI
+1 NAME /Smith/
+1 SEX M
+1 BIRT
+2 DATE 1948
+2 PLAC London, England
+0 @I004@ INDI
+1 NAME Alice Rose /Smith/
+1 SEX F
+1 BIRT
+2 DATE JAN 1950
+2 PLAC London, England
+0 @I005@ INDI
+1 NAME Robert /Brown/
+1 SEX M
+1 BIRT
+2 DATE circa 1890
+2 PLAC Yorkshire, England
+1 DEAT
+2 DATE 1 DEC 1955
+1 NOTE Pioneer farmer.
+0 @I006@ INDI
+1 NAME Clara /Brown/
+1 SEX F
+1 BIRT
+2 DATE 1892
+0 @I007@ INDI
+1 NAME Thomas /Brown/
+1 SEX M
+1 BIRT
+2 DATE 10 OCT 1915
+0 @I008@ INDI
+1 NAME Dorothy /Brown/
+1 SEX F
+1 BIRT
+2 DATE 22 APR 1918
+0 @I009@ INDI
+1 NAME George /Wilson/
+1 SEX M
+1 BIRT
+2 DATE 1900
+1 OCCU Farmer
+0 @I010@ INDI
+1 NAME Edith /Wilson/
+1 SEX F
+1 BIRT
+2 DATE AFT 1905
+0 @F001@ FAM
+1 HUSB @I001@
+1 WIFE @I002@
+1 CHIL @I003@
+1 CHIL @I004@
+1 MARR
+2 DATE 12 SEP 1946
+2 PLAC London, England
+0 @F002@ FAM
+1 HUSB @I005@
+1 WIFE @I006@
+1 CHIL @I007@
+1 CHIL @I008@
+1 MARR
+2 DATE 1912
+0 @F003@ FAM
+1 HUSB @I009@
+1 WIFE @I010@
+0 TRLR

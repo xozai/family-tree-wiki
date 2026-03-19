@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+enum PrivacyLevel {
+  PUBLIC
+  PRIVATE
+}
+
+enum RelationshipType {
+  PARENT
+  CHILD
+  SPOUSE
+  SIBLING
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  username             String    @unique
+  email                String    @unique
+  passwordHash         String
+  fullName             String
+  relationshipToFamily String
+  role                 Role      @default(VIEWER)
+  status               UserStatus @default(PENDING)
+  approvedById         String?
+  approvedBy           User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
+  approvedUsers        User[]    @relation("ApprovedBy")
+  rejectionReason      String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  refreshTokens        RefreshToken[]
+  createdMembers       FamilyMember[] @relation("CreatedBy")
+  editedMembers        FamilyMember[] @relation("LastEditedBy")
+  revisions            ProfileRevision[]
+  uploadedMedia        Media[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+}
+
+model FamilyMember {
+  id            String       @id @default(uuid())
+  firstName     String
+  lastName      String
+  maidenName    String?
+  alternateNames String[]    @default([])
+  birthDate     DateTime?
+  birthPlace    String?
+  deathDate     DateTime?
+  deathPlace    String?
+  biography     String?      // Rich text HTML
+  occupation    String?
+  education     String?
+  achievements  String?
+  privacyLevel  PrivacyLevel @default(PUBLIC)
+
+  createdById   String?
+  createdBy     User?        @relation("CreatedBy", fields: [createdById], references: [id])
+  lastEditedById String?
+  lastEditedBy  User?        @relation("LastEditedBy", fields: [lastEditedById], references: [id])
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  relationshipsAsA  Relationship[] @relation("PersonA")
+  relationshipsAsB  Relationship[] @relation("PersonB")
+  revisions         ProfileRevision[]
+  media             Media[]
+  tags              TagsOnMembers[]
+}
+
+model Relationship {
+  id               String           @id @default(uuid())
+  personAId        String
+  personA          FamilyMember     @relation("PersonA", fields: [personAId], references: [id], onDelete: Cascade)
+  personBId        String
+  personB          FamilyMember     @relation("PersonB", fields: [personBId], references: [id], onDelete: Cascade)
+  relationshipType RelationshipType
+  confidence       Int              @default(100) // 0-100
+  createdAt        DateTime         @default(now())
+
+  @@unique([personAId, personBId, relationshipType])
+}
+
+model ProfileRevision {
+  id             String       @id @default(uuid())
+  familyMemberId String
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  contentSnapshot Json
+  editSummary    String?
+  editedById     String?
+  editedBy       User?        @relation(fields: [editedById], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model Media {
+  id             String       @id @default(uuid())
+  familyMemberId String
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  fileUrl        String
+  fileName       String
+  mimeType       String
+  fileSize       Int
+  caption        String?
+  isPrimary      Boolean      @default(false)
+  uploadedById   String?
+  uploadedBy     User?        @relation(fields: [uploadedById], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model Tag {
+  id      String          @id @default(uuid())
+  name    String          @unique
+  members TagsOnMembers[]
+}
+
+model TagsOnMembers {
+  memberId String
+  member   FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  tagId    String
+  tag      Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([memberId, tagId])
+}

@@ -1,0 +1,58 @@
+# ── Stage 1: Build ────────────────────────────────────────────────────────────
+# Compiles TypeScript and generates the Prisma client.
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY backend/package*.json ./
+RUN npm ci
+
+COPY backend/prisma ./prisma
+RUN npx prisma generate
+
+COPY backend/tsconfig.json ./
+COPY backend/src ./src
+RUN npm run build
+
+# ── Stage 2: Production ───────────────────────────────────────────────────────
+# Lean runtime image — only production deps + compiled output.
+FROM node:20-alpine AS production
+WORKDIR /app
+
+# pg_isready is used in the startup script to wait for Postgres
+RUN apk add --no-cache postgresql-client
+
+# Non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Install production dependencies
+COPY backend/package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Copy generated Prisma client (includes native query-engine binary)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
+# Copy Prisma CLI (devDep needed only for `prisma migrate deploy` at startup)
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+
+# Copy compiled application
+COPY --from=builder /app/dist ./dist
+
+# Copy Prisma schema (required by migrate deploy)
+COPY backend/prisma ./prisma
+
+# Startup script
+COPY scripts/migrate-and-start.sh ./scripts/migrate-and-start.sh
+RUN chmod +x ./scripts/migrate-and-start.sh
+
+# Uploads directory (replaced by named volume in production)
+RUN mkdir -p /app/uploads
+
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD wget -qO- http://localhost:3001/api/health || exit 1
+
+CMD ["sh", "./scripts/migrate-and-start.sh"]
