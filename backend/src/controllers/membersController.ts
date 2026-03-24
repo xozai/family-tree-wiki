@@ -3,6 +3,36 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 
+const CONTRADICTING_TYPES: Partial<Record<string, string[]>> = {
+  PARENT: ['CHILD'],
+  CHILD: ['PARENT'],
+};
+
+async function validateRelationships(
+  memberId: string,
+  relationships: Array<{ personBId: string; relationshipType: string }>,
+): Promise<string | null> {
+  for (const r of relationships) {
+    if (r.personBId === memberId) {
+      return 'A member cannot have a relationship with themselves';
+    }
+    const contradictTypes = CONTRADICTING_TYPES[r.relationshipType];
+    if (contradictTypes) {
+      const conflict = await prisma.relationship.findFirst({
+        where: {
+          personAId: r.personBId,
+          personBId: memberId,
+          relationshipType: { in: contradictTypes as ('PARENT' | 'CHILD' | 'SPOUSE' | 'SIBLING')[] },
+        },
+      });
+      if (conflict) {
+        return `Relationship contradiction: cannot set ${r.relationshipType} when the inverse ${conflict.relationshipType} already exists`;
+      }
+    }
+  }
+  return null;
+}
+
 const memberSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
@@ -27,12 +57,12 @@ const memberSchema = z.object({
 });
 
 export async function listMembers(req: AuthRequest, res: Response): Promise<void> {
-  const isAdmin = req.user?.role === 'ADMIN';
+  const canSeePrivate = req.user?.role === 'ADMIN' || req.user?.role === 'EDITOR';
   const { search, page = '1', limit = '20', tags, birthYearMin, birthYearMax, sortBy = 'lastName' } = req.query;
 
   const AND: Record<string, unknown>[] = [];
 
-  if (!isAdmin) AND.push({ privacyLevel: 'PUBLIC' });
+  if (!canSeePrivate) AND.push({ privacyLevel: 'PUBLIC' });
 
   if (search) {
     AND.push({
@@ -41,7 +71,11 @@ export async function listMembers(req: AuthRequest, res: Response): Promise<void
         { lastName: { contains: String(search), mode: 'insensitive' } },
         { maidenName: { contains: String(search), mode: 'insensitive' } },
         { birthPlace: { contains: String(search), mode: 'insensitive' } },
+        { deathPlace: { contains: String(search), mode: 'insensitive' } },
         { occupation: { contains: String(search), mode: 'insensitive' } },
+        { education: { contains: String(search), mode: 'insensitive' } },
+        { achievements: { contains: String(search), mode: 'insensitive' } },
+        { biography: { contains: String(search), mode: 'insensitive' } },
       ],
     });
   }
@@ -92,7 +126,7 @@ export async function listMembers(req: AuthRequest, res: Response): Promise<void
 }
 
 export async function getMember(req: AuthRequest, res: Response): Promise<void> {
-  const isAdmin = req.user?.role === 'ADMIN';
+  const canSeePrivate = req.user?.role === 'ADMIN' || req.user?.role === 'EDITOR';
   const member = await prisma.familyMember.findUnique({
     where: { id: req.params.id },
     include: {
@@ -109,12 +143,19 @@ export async function getMember(req: AuthRequest, res: Response): Promise<void> 
     res.status(404).json({ error: 'Member not found' });
     return;
   }
-  if (member.privacyLevel === 'PRIVATE' && !isAdmin) {
+  if (member.privacyLevel === 'PRIVATE' && !canSeePrivate) {
     res.status(403).json({ error: 'This profile is private' });
     return;
   }
 
-  res.json(member);
+  // Filter private related members from VIEWER users
+  const result = canSeePrivate ? member : {
+    ...member,
+    relationshipsAsA: member.relationshipsAsA.filter((r) => r.personB.privacyLevel !== 'PRIVATE'),
+    relationshipsAsB: member.relationshipsAsB.filter((r) => r.personA.privacyLevel !== 'PRIVATE'),
+  };
+
+  res.json(result);
 }
 
 export async function createMember(req: AuthRequest, res: Response): Promise<void> {
@@ -125,6 +166,14 @@ export async function createMember(req: AuthRequest, res: Response): Promise<voi
   }
 
   const { relationships, tags, editSummary, ...data } = result.data;
+
+  if (relationships?.length) {
+    const validationError = await validateRelationships('new', relationships);
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+  }
 
   const member = await prisma.$transaction(async (tx) => {
     const m = await tx.familyMember.create({
@@ -194,6 +243,14 @@ export async function updateMember(req: AuthRequest, res: Response): Promise<voi
   }
 
   const { relationships, tags, editSummary, ...data } = result.data;
+
+  if (relationships?.length) {
+    const validationError = await validateRelationships(req.params.id, relationships);
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+  }
 
   const member = await prisma.$transaction(async (tx) => {
     const m = await tx.familyMember.update({

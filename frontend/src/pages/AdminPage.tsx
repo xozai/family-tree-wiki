@@ -4,7 +4,7 @@ import api from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 import { format } from 'date-fns';
 
-type Tab = 'pending' | 'users' | 'stats';
+type Tab = 'pending' | 'users' | 'stats' | 'invites';
 
 interface PendingUser {
   id: string;
@@ -26,6 +26,17 @@ interface User {
   rejectionReason: string | null;
   createdAt: string;
   approvedBy: { fullName: string; username: string } | null;
+}
+
+interface InviteToken {
+  id: string;
+  token: string;
+  note: string | null;
+  expiresAt: string;
+  createdAt: string;
+  usedAt: string | null;
+  createdBy: { fullName: string; username: string };
+  usedBy: { fullName: string; username: string } | null;
 }
 
 interface Stats {
@@ -64,6 +75,10 @@ export default function AdminPage() {
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [actionMsg, setActionMsg] = useState('');
+  const [invites, setInvites] = useState<InviteToken[]>([]);
+  const [inviteNote, setInviteNote] = useState('');
+  const [inviteDays, setInviteDays] = useState(7);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   if (user?.role !== 'ADMIN') return <Navigate to="/" replace />;
 
@@ -77,6 +92,9 @@ export default function AdminPage() {
       } else if (t === 'users') {
         const { data } = await api.get('/admin/users');
         setUsers(data);
+      } else if (t === 'invites') {
+        const { data } = await api.get('/admin/invites');
+        setInvites(data);
       } else {
         const { data } = await api.get('/admin/stats');
         setStats(data);
@@ -107,6 +125,26 @@ export default function AdminPage() {
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role: role as User['role'] } : u)));
   }
 
+  async function createInvite() {
+    const { data } = await api.post('/admin/invites', { note: inviteNote || undefined, expiresInDays: inviteDays });
+    setInvites((prev) => [data, ...prev]);
+    setInviteNote('');
+    setActionMsg('Invite created.');
+  }
+
+  async function revokeInvite(id: string) {
+    await api.delete(`/admin/invites/${id}`);
+    setInvites((prev) => prev.map((i) => i.id === id ? { ...i, expiresAt: new Date().toISOString() } : i));
+    setActionMsg('Invite revoked.');
+  }
+
+  function copyInviteLink(invite: InviteToken) {
+    const link = `${window.location.origin}/register?token=${invite.token}`;
+    navigator.clipboard.writeText(link);
+    setCopiedId(invite.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
   async function changeStatus(id: string, status: string) {
     await api.patch(`/admin/users/${id}`, { status });
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, status: status as User['status'] } : u)));
@@ -135,6 +173,7 @@ export default function AdminPage() {
         {([
           { id: 'pending', label: `Pending${pending.length > 0 && tab !== 'pending' ? ` (${pending.length})` : ''}` },
           { id: 'users', label: 'All Users' },
+          { id: 'invites', label: 'Invites' },
           { id: 'stats', label: 'Site Statistics' },
         ] as { id: Tab; label: string }[]).map(({ id, label }) => (
           <button
@@ -315,6 +354,114 @@ export default function AdminPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ── INVITES TAB ── */}
+          {tab === 'invites' && (
+            <div className="space-y-6">
+              {/* Create invite */}
+              <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-sm">
+                <h3 className="font-semibold text-stone-700 mb-3">Create Invite Link</h3>
+                <div className="flex gap-3 flex-wrap items-end">
+                  <div className="flex-1 min-w-48">
+                    <label className="text-xs text-stone-500 block mb-1">Note (optional)</label>
+                    <input
+                      value={inviteNote}
+                      onChange={(e) => setInviteNote(e.target.value)}
+                      placeholder="e.g., For cousin Sarah"
+                      className="w-full border border-stone-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-400 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-stone-500 block mb-1">Expires in</label>
+                    <select
+                      value={inviteDays}
+                      onChange={(e) => setInviteDays(Number(e.target.value))}
+                      className="border border-stone-300 rounded-lg px-3 py-1.5 text-sm bg-white"
+                    >
+                      {[1, 3, 7, 14, 30].map((d) => (
+                        <option key={d} value={d}>{d} day{d !== 1 ? 's' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={createInvite}
+                    className="bg-amber-700 hover:bg-amber-600 text-white text-sm px-4 py-1.5 rounded-lg transition-colors"
+                  >
+                    + Generate Link
+                  </button>
+                </div>
+              </div>
+
+              {/* Invite list */}
+              <div className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+                {invites.length === 0 ? (
+                  <div className="text-center text-stone-400 py-12 text-sm">No invites yet.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-stone-50 border-b border-stone-200 text-left">
+                        <th className="px-4 py-3 font-medium text-stone-600">Note / Token</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Created</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Expires</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Status</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invites.map((inv) => {
+                        const expired = new Date(inv.expiresAt) < new Date();
+                        const used = !!inv.usedAt;
+                        return (
+                          <tr key={inv.id} className="border-b border-stone-100 hover:bg-stone-50">
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-stone-800">{inv.note || <span className="text-stone-400 italic">No note</span>}</div>
+                              <div className="text-xs text-stone-400 font-mono truncate max-w-xs">{inv.token.slice(0, 16)}…</div>
+                            </td>
+                            <td className="px-4 py-3 text-stone-500 text-xs">
+                              {format(new Date(inv.createdAt), 'MMM d, yyyy')}
+                              <div className="text-stone-400">by {inv.createdBy.fullName}</div>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-stone-500">
+                              {format(new Date(inv.expiresAt), 'MMM d, yyyy')}
+                            </td>
+                            <td className="px-4 py-3">
+                              {used ? (
+                                <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                                  Used by {inv.usedBy?.fullName}
+                                </span>
+                              ) : expired ? (
+                                <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-medium">Expired</span>
+                              ) : (
+                                <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">Active</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 flex gap-2">
+                              {!used && !expired && (
+                                <>
+                                  <button
+                                    onClick={() => copyInviteLink(inv)}
+                                    className="text-xs border border-stone-300 rounded px-2 py-1 hover:bg-stone-50 transition-colors"
+                                  >
+                                    {copiedId === inv.id ? '✓ Copied' : 'Copy Link'}
+                                  </button>
+                                  <button
+                                    onClick={() => revokeInvite(inv.id)}
+                                    className="text-xs border border-red-200 text-red-600 rounded px-2 py-1 hover:bg-red-50 transition-colors"
+                                  >
+                                    Revoke
+                                  </button>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
 

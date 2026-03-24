@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import * as d3 from 'd3';
 import api from '../lib/api';
@@ -219,6 +219,7 @@ export default function FamilyTreePage() {
   const { id: routeId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [treeData, setTreeData] = useState<TreeNode | null>(null);
   const [rootId, setRootId] = useState<string>(routeId ?? '');
@@ -232,6 +233,7 @@ export default function FamilyTreePage() {
   const [showSearch, setShowSearch] = useState(false);
 
   const apiBase = import.meta.env.VITE_API_URL || '/api';
+  const isTouch = useMemo(() => 'ontouchstart' in window || navigator.maxTouchPoints > 0, []);
 
   const loadTree = useCallback(async (id: string, m: Mode, d: number) => {
     if (!id) return;
@@ -252,10 +254,22 @@ export default function FamilyTreePage() {
     if (rootId) loadTree(rootId, mode, depth);
   }, [rootId, mode, depth, loadTree]);
 
-  // Render D3 tree whenever data changes
+  // Render D3 tree whenever data or container size changes
   useEffect(() => {
     if (!treeData || !svgRef.current) return;
     drawTree(svgRef.current, treeData, mode, (id) => navigate(`/members/${id}`), apiBase);
+  }, [treeData, mode, navigate, apiBase]);
+
+  // Re-draw on container resize (handles orientation change on mobile)
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver(() => {
+      if (treeData && svgRef.current) {
+        drawTree(svgRef.current, treeData, mode, (id) => navigate(`/members/${id}`), apiBase);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
   }, [treeData, mode, navigate, apiBase]);
 
   // Member search for root selection
@@ -276,7 +290,7 @@ export default function FamilyTreePage() {
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
       {/* Toolbar */}
-      <div className="flex items-center gap-3 flex-wrap pb-4 border-b border-stone-200 mb-4">
+      <div className="flex items-center gap-3 overflow-x-auto pb-4 border-b border-stone-200 mb-4 min-w-0 scrollbar-hide">
         <h1 className="font-serif text-xl font-semibold text-stone-800 mr-2">Family Tree</h1>
 
         {/* Root person selector */}
@@ -376,7 +390,7 @@ export default function FamilyTreePage() {
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 bg-stone-50 rounded-xl border border-stone-200 overflow-hidden relative">
+      <div ref={containerRef} className="flex-1 bg-stone-50 rounded-xl border border-stone-200 overflow-hidden relative">
         {!rootId && (
           <div className="absolute inset-0 flex items-center justify-center text-stone-400">
             <div className="text-center">
@@ -410,7 +424,7 @@ export default function FamilyTreePage() {
         <svg
           ref={svgRef}
           className="w-full h-full"
-          style={{ display: treeData && !loading ? 'block' : 'none' }}
+          style={{ display: treeData && !loading ? 'block' : 'none', touchAction: 'none' }}
         />
 
         {/* Legend */}
@@ -424,7 +438,9 @@ export default function FamilyTreePage() {
               <div className="w-4 h-3 rounded border border-stone-300 bg-white" />
               <span>Related member</span>
             </div>
-            <div className="mt-1.5 text-stone-400">Scroll to zoom · Drag to pan · Click to profile</div>
+            <div className="mt-1.5 text-stone-400">
+            {isTouch ? 'Pinch to zoom · Drag to pan · Tap to profile' : 'Scroll to zoom · Drag to pan · Click to profile'}
+          </div>
           </div>
         )}
       </div>

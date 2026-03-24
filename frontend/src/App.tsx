@@ -11,6 +11,7 @@ import MemberRevisionsPage from './pages/MemberRevisionsPage';
 import ImportPage from './pages/ImportPage';
 import AdminPage from './pages/AdminPage';
 import FamilyTreePage from './pages/FamilyTreePage';
+import SettingsPage from './pages/SettingsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="tree" element={<FamilyTreePage />} />
         <Route path="tree/:id" element={<FamilyTreePage />} />
         <Route path="admin" element={<AdminPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

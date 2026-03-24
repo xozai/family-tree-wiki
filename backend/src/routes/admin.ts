@@ -8,6 +8,7 @@ import {
   updateUser,
   getSiteStats,
 } from '../controllers/adminController';
+import { createInvite, listInvites, revokeInvite } from '../controllers/inviteController';
 
 export const adminRouter = Router();
 
@@ -20,3 +21,7 @@ adminRouter.post('/users/:id/reject', rejectUser);
 adminRouter.get('/users', listAllUsers);
 adminRouter.patch('/users/:id', updateUser);
 adminRouter.get('/stats', getSiteStats);
+
+adminRouter.get('/invites', listInvites);
+adminRouter.post('/invites', createInvite);
+adminRouter.delete('/invites/:id', revokeInvite);

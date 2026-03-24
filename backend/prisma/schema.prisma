@@ -52,6 +52,21 @@ model User {
   editedMembers        FamilyMember[] @relation("LastEditedBy")
   revisions            ProfileRevision[]
   uploadedMedia        Media[]
+  createdInvites       InviteToken[]  @relation("CreatedInvites")
+  usedInvite           InviteToken?   @relation("UsedInvite")
+}
+
+model InviteToken {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  note        String?
+  createdById String
+  createdBy   User      @relation("CreatedInvites", fields: [createdById], references: [id])
+  usedById    String?   @unique
+  usedBy      User?     @relation("UsedInvite", fields: [usedById], references: [id])
+  usedAt      DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
 }
 
 model RefreshToken {

@@ -12,12 +12,17 @@ const registerSchema = z.object({
   password: z.string().min(12),
   fullName: z.string().min(2).max(100),
   relationshipToFamily: z.string().min(2).max(200),
-  message: z.string().max(500).optional(),
+  inviteToken: z.string().min(1, 'An invite token is required to register'),
 });
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string(),
+  newPassword: z.string().min(12, 'New password must be at least 12 characters'),
 });
 
 export async function register(req: Request, res: Response): Promise<void> {
@@ -27,7 +32,14 @@ export async function register(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { username, email, password, fullName, relationshipToFamily } = result.data;
+  const { username, email, password, fullName, relationshipToFamily, inviteToken } = result.data;
+
+  // Validate invite token
+  const invite = await prisma.inviteToken.findUnique({ where: { token: inviteToken } });
+  if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
+    res.status(400).json({ error: 'Invalid or expired invite link. Please contact the family administrator.' });
+    return;
+  }
 
   const existing = await prisma.user.findFirst({
     where: { OR: [{ email }, { username }] },
@@ -38,9 +50,16 @@ export async function register(req: Request, res: Response): Promise<void> {
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const user = await prisma.user.create({
-    data: { username, email, passwordHash, fullName, relationshipToFamily },
-    select: { id: true, email: true, username: true, fullName: true, status: true },
+  const user = await prisma.$transaction(async (tx) => {
+    const u = await tx.user.create({
+      data: { username, email, passwordHash, fullName, relationshipToFamily },
+      select: { id: true, email: true, username: true, fullName: true, status: true },
+    });
+    await tx.inviteToken.update({
+      where: { id: invite.id },
+      data: { usedById: u.id, usedAt: new Date() },
+    });
+    return u;
   });
 
   res.status(201).json({ message: 'Registration submitted. Awaiting admin approval.', user });
@@ -158,6 +177,38 @@ export async function logout(req: AuthRequest, res: Response): Promise<void> {
     });
   }
   res.json({ message: 'Logged out' });
+}
+
+export async function changePassword(req: AuthRequest, res: Response): Promise<void> {
+  const result = changePasswordSchema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    return;
+  }
+
+  const { currentPassword, newPassword } = result.data;
+  const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) {
+    res.status(401).json({ error: 'Current password is incorrect' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+  // Revoke all existing refresh tokens so other sessions are invalidated
+  await prisma.refreshToken.updateMany({
+    where: { userId: user.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+
+  res.json({ message: 'Password changed successfully. Please log in again.' });
 }
 
 export async function me(req: AuthRequest, res: Response): Promise<void> {

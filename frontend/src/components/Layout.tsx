@@ -42,7 +42,10 @@ export default function Layout() {
             <div className="flex items-center gap-2 text-warm-200">
               <span>{user?.fullName}</span>
               <span className="text-xs bg-warm-700 px-2 py-0.5 rounded">{user?.role}</span>
-              <button onClick={handleLogout} className="hover:text-white ml-2 text-warm-300">
+              <Link to="/settings" className="hover:text-white ml-1 text-warm-300 text-xs">
+                Settings
+              </Link>
+              <button onClick={handleLogout} className="hover:text-white text-warm-300">
                 Sign out
               </button>
             </div>
