@@ -66,6 +66,46 @@ On first start the backend container will:
 
 The app will be available at `http://<server-ip>` (or the domain pointed at it).
 
+### Enabling HTTPS (Let's Encrypt)
+
+After the app is running on HTTP and your domain is pointed at the server:
+
+```bash
+# 1. Issue the certificate (one-time)
+docker compose -f docker-compose.prod.yml run --rm certbot \
+  certonly --webroot -w /var/www/certbot \
+  -d your-domain.com \
+  --email you@example.com \
+  --agree-tos --no-eff-email
+
+# 2. Edit nginx/nginx.conf on the server:
+#    a. Replace `your-domain.com` in the HTTPS server block with your actual domain
+#    b. Uncomment the entire HTTPS server block
+#    c. In the HTTP server block, replace all proxy location blocks with:
+#         location / { return 301 https://$host$request_uri; }
+
+# 3. Reload nginx
+docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+
+# 4. Update CORS_ORIGIN in .env.production to https://your-domain.com
+#    then restart the backend:
+docker compose -f docker-compose.prod.yml up -d backend
+```
+
+Certificates auto-renew every 12 hours via the certbot container.
+
+### Auto-deploy on git push (GitHub Actions)
+
+Add these secrets to your GitHub repo (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+|---|---|
+| `SERVER_HOST` | Your server's IP address |
+| `SERVER_USER` | `root` (or your deploy user) |
+| `SERVER_SSH_KEY` | Contents of `~/.ssh/id_ed25519` (private key) |
+
+Every push to `main` will SSH into the server, pull, rebuild, and run a health check automatically.
+
 ### Updating to a new version
 
 ```bash

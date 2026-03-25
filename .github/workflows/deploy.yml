@@ -1,0 +1,41 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+
+# Only one deploy runs at a time; new pushes cancel in-progress deploys.
+concurrency:
+  group: production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key:      ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            cd /root/family-tree-wiki
+
+            echo "Pulling latest code..."
+            git pull origin main
+
+            echo "Rebuilding and restarting services..."
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+            echo "Reloading nginx config..."
+            docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload
+
+            echo "Health check..."
+            sleep 5
+            curl -sf http://localhost/api/health || (echo "Health check failed" && exit 1)
+
+            echo "Deploy complete."

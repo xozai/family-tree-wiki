@@ -62,15 +62,36 @@ services:
     restart: unless-stopped
     ports:
       - "${NGINX_PORT:-80}:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - letsencrypt_data:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot
     depends_on:
       backend:
         condition: service_healthy
       frontend:
         condition: service_started
 
+  # ── Certbot (TLS certificate issuance and renewal) ────────────────────────────
+  # Inactive until you run the one-time issuance command (see README).
+  # After that it auto-renews every 12 hours.
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - letsencrypt_data:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM;
+             while :; do
+               certbot renew --webroot -w /var/www/certbot --quiet;
+               sleep 12h & wait $${!};
+             done"
+
 volumes:
   # Shared with docker-compose.dev.yml so dev data carries into prod
   postgres_data:
   uploads_data:
+  letsencrypt_data:
+  certbot_www:
