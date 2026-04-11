@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,6 +31,18 @@ const upload = multer({
 export const mediaRouter = Router();
 mediaRouter.use(authenticate);
 
-mediaRouter.post('/:memberId', requireRole('ADMIN', 'EDITOR'), upload.single('file'), uploadMedia);
+// Wrap multer so fileFilter and size errors become 400 instead of 500
+function uploadSingle(req: Request, res: Response, next: NextFunction): void {
+  upload.single('file')(req, res, (err: unknown) => {
+    if (err) {
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      res.status(400).json({ error: message });
+      return;
+    }
+    next();
+  });
+}
+
+mediaRouter.post('/:memberId', requireRole('ADMIN', 'EDITOR'), uploadSingle, uploadMedia);
 mediaRouter.delete('/:mediaId', requireRole('ADMIN', 'EDITOR'), deleteMedia);
 mediaRouter.patch('/:mediaId/primary', requireRole('ADMIN', 'EDITOR'), setPrimaryMedia);

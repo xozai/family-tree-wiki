@@ -3,9 +3,15 @@ import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 import { parseGedcom } from '../services/gedcomParser';
 
+export interface ImportError {
+  gedcomId: string;
+  message: string;
+}
+
 export interface ImportSummary {
   imported: { members: number; relationships: number };
   skipped: { duplicates: number; unparseable: number };
+  errors: ImportError[];
   warnings: string[];
 }
 
@@ -55,6 +61,7 @@ export async function confirmGedcomImport(req: AuthRequest, res: Response): Prom
   const summary: ImportSummary = {
     imported: { members: 0, relationships: 0 },
     skipped: { duplicates: 0, unparseable: 0 },
+    errors: [],
     warnings: [...warnings],
   };
 
@@ -136,9 +143,10 @@ export async function confirmGedcomImport(req: AuthRequest, res: Response): Prom
       summary.imported.members++;
     } catch (e) {
       summary.skipped.unparseable++;
-      summary.warnings.push(
-        `Failed to save ${individual.firstName} ${individual.lastName}: ${String(e)}`,
-      );
+      summary.errors.push({
+        gedcomId: individual.gedcomId,
+        message: `Failed to save ${individual.firstName} ${individual.lastName}: ${String(e)}`,
+      });
     }
   }
 
@@ -201,7 +209,7 @@ export async function confirmGedcomImport(req: AuthRequest, res: Response): Prom
       });
       summary.imported.relationships = result.count;
     } catch (e) {
-      summary.warnings.push(`Some relationships could not be saved: ${String(e)}`);
+      summary.errors.push({ gedcomId: 'FAM', message: `Some relationships could not be saved: ${String(e)}` });
     }
   }
 

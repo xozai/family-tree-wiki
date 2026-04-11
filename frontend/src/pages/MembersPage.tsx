@@ -14,7 +14,7 @@ interface Member {
   birthPlace: string | null;
   occupation: string | null;
   privacyLevel: string;
-  media: Array<{ fileUrl: string }>;
+  media: Array<{ fileUrl: string; thumbUrl: string | null }>;
   tags: Array<{ tag: { name: string } }>;
 }
 
@@ -170,7 +170,7 @@ export default function MembersPage() {
               className="bg-white rounded-xl border border-stone-100 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
               <div className="w-14 h-14 rounded-full bg-stone-100 overflow-hidden flex-shrink-0">
                 {m.media[0] ? (
-                  <img src={m.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
+                  <img src={m.media[0].thumbUrl ?? m.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
                 )}

@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 interface Media {
   id: string;
   fileUrl: string;
+  thumbUrl: string | null;
   caption: string | null;
   isPrimary: boolean;
 }
@@ -16,7 +17,7 @@ interface RelatedMember {
   id: string;
   firstName: string;
   lastName: string;
-  media: Array<{ fileUrl: string }>;
+  media: Array<{ fileUrl: string; thumbUrl: string | null }>;
 }
 
 interface Relationship {
@@ -186,7 +187,7 @@ export default function MemberDetailPage() {
                 {member.media.map((m, i) => (
                   <button key={m.id} onClick={() => setActivePhoto(i)}
                     className={`w-10 h-10 rounded overflow-hidden flex-shrink-0 ring-2 ${i === activePhoto ? 'ring-warm-500' : 'ring-transparent'}`}>
-                    <img src={m.fileUrl} alt="" className="w-full h-full object-cover" />
+                    <img src={m.thumbUrl ?? m.fileUrl} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
@@ -311,7 +312,7 @@ export default function MemberDetailPage() {
                       className="flex items-center gap-3 p-3 rounded-lg border border-stone-100 hover:bg-stone-50 transition-colors">
                       <div className="w-9 h-9 rounded-full bg-stone-100 overflow-hidden flex-shrink-0">
                         {entry.otherPerson.media[0] ? (
-                          <img src={entry.otherPerson.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
+                          <img src={entry.otherPerson.media[0].thumbUrl ?? entry.otherPerson.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-stone-300">👤</div>
                         )}
@@ -334,7 +335,7 @@ export default function MemberDetailPage() {
               <div className="grid grid-cols-3 gap-2">
                 {member.media.map((m) => (
                   <div key={m.id} className="aspect-square rounded-lg overflow-hidden bg-stone-100">
-                    <img src={m.fileUrl} alt={m.caption || ''} className="w-full h-full object-cover" />
+                    <img src={m.thumbUrl ?? m.fileUrl} alt={m.caption || ''} className="w-full h-full object-cover" />
                   </div>
                 ))}
               </div>

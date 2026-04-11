@@ -138,7 +138,7 @@ export default function MemberFormPage() {
         {/* Basic Info */}
         <section className="bg-white rounded-xl border border-stone-100 shadow-sm p-6 space-y-4">
           <h2 className="font-semibold text-stone-700 text-sm uppercase tracking-wide">Basic Information</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">First Name *</label>
               <input name="firstName" value={form.firstName} onChange={handleChange} required className={inputClass} />
@@ -165,7 +165,7 @@ export default function MemberFormPage() {
         {/* Dates & Places */}
         <section className="bg-white rounded-xl border border-stone-100 shadow-sm p-6 space-y-4">
           <h2 className="font-semibold text-stone-700 text-sm uppercase tracking-wide">Dates &amp; Places</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Birth Date</label>
               <input type="date" name="birthDate" value={form.birthDate} onChange={handleChange} className={inputClass} />
@@ -211,9 +211,9 @@ export default function MemberFormPage() {
             <button type="button" onClick={addRelationship} className="text-sm text-warm-700 hover:text-warm-800 font-medium">+ Add</button>
           </div>
           {relationships.map((rel, i) => (
-            <div key={i} className="flex gap-3 items-center">
+            <div key={i} className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <select value={rel.relationshipType} onChange={(e) => updateRelationship(i, 'relationshipType', e.target.value)}
-                className="border border-stone-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-warm-400 outline-none">
+                className="border border-stone-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-warm-400 outline-none sm:w-36">
                 <option value="PARENT">Parent of</option>
                 <option value="CHILD">Child of</option>
                 <option value="SPOUSE">Spouse of</option>
@@ -226,7 +226,7 @@ export default function MemberFormPage() {
                   <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
                 ))}
               </select>
-              <button type="button" onClick={() => removeRelationship(i)} className="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+              <button type="button" onClick={() => removeRelationship(i)} className="text-red-400 hover:text-red-600 text-lg leading-none self-end sm:self-auto">× Remove</button>
             </div>
           ))}
         </section>
@@ -234,7 +234,7 @@ export default function MemberFormPage() {
         {/* Meta */}
         <section className="bg-white rounded-xl border border-stone-100 shadow-sm p-6 space-y-4">
           <h2 className="font-semibold text-stone-700 text-sm uppercase tracking-wide">Tags &amp; Privacy</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Tags <span className="text-stone-400">(comma separated)</span></label>
               <input name="tags" value={form.tags} onChange={handleChange} placeholder="Military, Pioneer, Immigrant…" className={inputClass} />
@@ -254,11 +254,11 @@ export default function MemberFormPage() {
           </div>
         </section>
 
-        <div className="flex gap-3 justify-end">
-          <button type="button" onClick={() => navigate(-1)} className="px-5 py-2.5 border border-stone-300 rounded-lg text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+        <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+          <button type="button" onClick={() => navigate(-1)} className="w-full sm:w-auto px-5 py-2.5 border border-stone-300 rounded-lg text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             Cancel
           </button>
-          <button type="submit" disabled={loading} className="px-5 py-2.5 bg-warm-700 hover:bg-warm-800 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+          <button type="submit" disabled={loading} className="w-full sm:w-auto px-5 py-2.5 bg-warm-700 hover:bg-warm-800 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
             {loading ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create Profile')}
           </button>
         </div>

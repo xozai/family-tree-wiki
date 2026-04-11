@@ -48,6 +48,7 @@ model User {
   updatedAt            DateTime  @updatedAt
 
   refreshTokens        RefreshToken[]
+  passwordResetTokens  PasswordResetToken[]
   createdMembers       FamilyMember[] @relation("CreatedBy")
   editedMembers        FamilyMember[] @relation("LastEditedBy")
   revisions            ProfileRevision[]
@@ -67,6 +68,16 @@ model InviteToken {
   usedAt      DateTime?
   expiresAt   DateTime
   createdAt   DateTime  @default(now())
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  token     String    @unique @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 }
 
 model RefreshToken {
@@ -139,6 +150,7 @@ model Media {
   familyMemberId String
   familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
   fileUrl        String
+  thumbUrl       String?
   fileName       String
   mimeType       String
   fileSize       Int

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
+import { sendEmail, APP_URL } from '../lib/email';
 
 const updateUserSchema = z.object({
   role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']).optional(),
@@ -49,6 +50,18 @@ export async function approveUser(req: AuthRequest, res: Response): Promise<void
   });
 
   res.json(user);
+
+  try {
+    await sendEmail(
+      user.email,
+      'Your Family Tree Wiki account has been approved',
+      `<p>Hello ${user.fullName},</p>
+       <p>Your registration has been approved. You can now sign in.</p>
+       <p><a href="${APP_URL}/login">Sign in →</a></p>`,
+    );
+  } catch (e) {
+    console.error('Approval email error:', e);
+  }
 }
 
 // POST /api/admin/users/:id/reject
@@ -75,6 +88,19 @@ export async function rejectUser(req: AuthRequest, res: Response): Promise<void>
   });
 
   res.json(user);
+
+  try {
+    await sendEmail(
+      user.email,
+      'Your Family Tree Wiki registration was not approved',
+      `<p>Hello ${user.fullName},</p>
+       <p>Unfortunately your registration was not approved at this time.</p>
+       ${result.data.reason ? `<p><strong>Reason:</strong> ${result.data.reason}</p>` : ''}
+       <p>If you believe this is an error, please contact the family administrator.</p>`,
+    );
+  } catch (e) {
+    console.error('Rejection email error:', e);
+  }
 }
 
 // GET /api/admin/users

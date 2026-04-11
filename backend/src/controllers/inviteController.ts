@@ -3,10 +3,12 @@ import { randomBytes } from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
+import { sendEmail, APP_URL } from '../lib/email';
 
 const createInviteSchema = z.object({
   note: z.string().max(200).optional(),
   expiresInDays: z.number().int().min(1).max(90).default(7),
+  recipientEmail: z.string().email().optional(),
 });
 
 export async function createInvite(req: AuthRequest, res: Response): Promise<void> {
@@ -16,7 +18,7 @@ export async function createInvite(req: AuthRequest, res: Response): Promise<voi
     return;
   }
 
-  const { note, expiresInDays } = result.data;
+  const { note, expiresInDays, recipientEmail } = result.data;
   const token = randomBytes(24).toString('hex');
   const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
 
@@ -26,6 +28,21 @@ export async function createInvite(req: AuthRequest, res: Response): Promise<voi
   });
 
   res.status(201).json(invite);
+
+  if (recipientEmail) {
+    try {
+      const registerUrl = `${APP_URL}/register?invite=${token}`;
+      await sendEmail(
+        recipientEmail,
+        "You've been invited to Family Tree Wiki",
+        `<p>Hello,</p>
+         <p>You have been invited to join the Family Tree Wiki. Click the link below to register — this invitation expires in ${expiresInDays} day${expiresInDays !== 1 ? 's' : ''}.</p>
+         <p><a href="${registerUrl}">${registerUrl}</a></p>`,
+      );
+    } catch (e) {
+      console.error('Invite email error:', e);
+    }
+  }
 }
 
 export async function listInvites(req: AuthRequest, res: Response): Promise<void> {

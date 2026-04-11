@@ -37,6 +37,13 @@ services:
       NODE_ENV: production
       # Override DATABASE_URL to use the service name instead of localhost
       DATABASE_URL: postgresql://${POSTGRES_USER:-familytree}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-familytree}
+      # Email (SMTP) — set these in .env.production
+      # SMTP_HOST: smtp.example.com
+      # SMTP_PORT: 587
+      # SMTP_USER: user@example.com
+      # SMTP_PASS: your-smtp-password
+      # SMTP_FROM: "Family Tree Wiki <noreply@example.com>"
+      # APP_URL: https://yourdomain.com
     depends_on:
       postgres:
         condition: service_healthy

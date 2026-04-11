@@ -14,9 +14,15 @@ interface PreviewData {
   warnings: string[];
 }
 
+interface ImportError {
+  gedcomId: string;
+  message: string;
+}
+
 interface ImportResult {
   imported: { members: number; relationships: number };
   skipped: { duplicates: number; unparseable: number };
+  errors: ImportError[];
   warnings: string[];
 }
 
@@ -313,10 +319,17 @@ export default function ImportPage() {
       {/* ── DONE step ── */}
       {step === 'done' && result && (
         <div>
-          <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6 text-center">
-            <div className="text-4xl mb-2">✅</div>
-            <h2 className="text-xl font-semibold text-green-800">Import Complete</h2>
-          </div>
+          {result.errors.length === 0 ? (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6 text-center">
+              <div className="text-4xl mb-2">✅</div>
+              <h2 className="text-xl font-semibold text-green-800">Import Complete</h2>
+            </div>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 mb-6 text-center">
+              <div className="text-4xl mb-2">⚠️</div>
+              <h2 className="text-xl font-semibold text-yellow-800">Import finished with errors</h2>
+            </div>
+          )}
 
           {/* Result cards */}
           <div className="grid grid-cols-2 gap-4 mb-6">
@@ -346,6 +359,22 @@ export default function ImportPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {result.errors.length > 0 && (
+            <details className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6" open>
+              <summary className="text-red-800 font-medium text-sm cursor-pointer">
+                ❌ {result.errors.length} error{result.errors.length !== 1 ? 's' : ''}
+              </summary>
+              <ul className="mt-2 text-red-700 text-xs space-y-1.5 list-none">
+                {result.errors.map((e, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="font-mono bg-red-100 px-1 rounded text-red-600 shrink-0">{e.gedcomId}</span>
+                    <span>{e.message}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
 
           {result.warnings.length > 0 && (

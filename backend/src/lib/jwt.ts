@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'dev_access_secret_change_in_prod';
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev_refresh_secret_change_in_prod';
@@ -14,7 +15,9 @@ export function signAccessToken(payload: JwtPayload): string {
 }
 
 export function signRefreshToken(payload: JwtPayload): string {
-  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: '7d' });
+  // jti (JWT ID) ensures uniqueness even when multiple logins happen within the same second
+  const jti = randomBytes(16).toString('hex');
+  return jwt.sign({ ...payload, jti }, REFRESH_SECRET, { expiresIn: '7d' });
 }
 
 export function verifyAccessToken(token: string): JwtPayload {
