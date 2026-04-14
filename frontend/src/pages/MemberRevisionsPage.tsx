@@ -17,9 +17,12 @@ export default function MemberRevisionsPage() {
   const user = useAuthStore((s) => s.user);
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [reverting, setReverting] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get(`/members/${id}/revisions`).then(({ data }) => setRevisions(data));
+    api.get(`/members/${id}/revisions`)
+      .then(({ data }) => setRevisions(data))
+      .catch(() => setError('Failed to load revision history.'));
   }, [id]);
 
   async function handleRevert(revisionId: string) {
@@ -32,6 +35,8 @@ export default function MemberRevisionsPage() {
       setReverting(null);
     }
   }
+
+  if (error) return <div className="text-center text-red-600 py-12">{error}</div>;
 
   return (
     <div className="max-w-2xl mx-auto">

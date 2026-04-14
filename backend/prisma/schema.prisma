@@ -55,6 +55,7 @@ model User {
   uploadedMedia        Media[]
   createdInvites       InviteToken[]  @relation("CreatedInvites")
   usedInvite           InviteToken?   @relation("UsedInvite")
+  auditLogs            AuditLog[]
 }
 
 model InviteToken {
@@ -165,6 +166,18 @@ model Tag {
   id      String          @id @default(uuid())
   name    String          @unique
   members TagsOnMembers[]
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  targetType String?
+  targetId   String?
+  targetName String?
+  meta       Json?
+  createdAt  DateTime @default(now())
 }
 
 model TagsOnMembers {

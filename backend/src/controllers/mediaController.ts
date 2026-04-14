@@ -4,6 +4,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
+import { logAudit } from '../lib/audit';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 
@@ -61,6 +62,15 @@ export async function uploadMedia(req: AuthRequest, res: Response): Promise<void
     throw e;
   }
 
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'media.upload',
+    targetType: 'media',
+    targetId: media.id,
+    targetName: media.fileName,
+    meta: { memberId: req.params.memberId },
+  });
+
   res.status(201).json(media);
 }
 
@@ -88,6 +98,16 @@ export async function deleteMedia(req: AuthRequest, res: Response): Promise<void
   }
 
   await prisma.media.delete({ where: { id: req.params.mediaId } });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'media.delete',
+    targetType: 'media',
+    targetId: media.id,
+    targetName: media.fileName,
+    meta: { memberId: media.familyMemberId },
+  });
+
   res.json({ message: 'Media deleted' });
 }
 

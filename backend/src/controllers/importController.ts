@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 import { parseGedcom } from '../services/gedcomParser';
+import { logAudit } from '../lib/audit';
 
 export interface ImportError {
   gedcomId: string;
@@ -212,6 +213,17 @@ export async function confirmGedcomImport(req: AuthRequest, res: Response): Prom
       summary.errors.push({ gedcomId: 'FAM', message: `Some relationships could not be saved: ${String(e)}` });
     }
   }
+
+  await logAudit({
+    actorId: userId,
+    action: 'import.gedcom',
+    meta: {
+      membersImported: summary.imported.members,
+      relationshipsImported: summary.imported.relationships,
+      duplicatesSkipped: summary.skipped.duplicates,
+      errors: summary.errors.length,
+    },
+  });
 
   res.status(201).json(summary);
 }

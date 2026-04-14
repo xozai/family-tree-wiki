@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
+import { logAudit } from '../lib/audit';
 
 const CONTRADICTING_TYPES: Partial<Record<string, string[]>> = {
   PARENT: ['CHILD'],
@@ -226,6 +227,14 @@ export async function createMember(req: AuthRequest, res: Response): Promise<voi
     return m;
   });
 
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'member.create',
+    targetType: 'member',
+    targetId: member.id,
+    targetName: `${member.firstName} ${member.lastName}`,
+  });
+
   res.status(201).json(member);
 }
 
@@ -307,6 +316,15 @@ export async function updateMember(req: AuthRequest, res: Response): Promise<voi
     return m;
   });
 
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'member.update',
+    targetType: 'member',
+    targetId: member.id,
+    targetName: `${member.firstName} ${member.lastName}`,
+    meta: { editSummary: result.data.editSummary },
+  });
+
   res.json(member);
 }
 
@@ -317,6 +335,15 @@ export async function deleteMember(req: AuthRequest, res: Response): Promise<voi
     return;
   }
   await prisma.familyMember.delete({ where: { id: req.params.id } });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'member.delete',
+    targetType: 'member',
+    targetId: existing.id,
+    targetName: `${existing.firstName} ${existing.lastName}`,
+  });
+
   res.json({ message: 'Member deleted' });
 }
 
@@ -362,6 +389,15 @@ export async function revertMemberRevision(req: AuthRequest, res: Response): Pro
     });
 
     return m;
+  });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'member.revert',
+    targetType: 'member',
+    targetId: member.id,
+    targetName: `${member.firstName} ${member.lastName}`,
+    meta: { revisionId: req.params.revisionId },
   });
 
   res.json(member);

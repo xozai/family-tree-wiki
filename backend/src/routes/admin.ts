@@ -7,6 +7,7 @@ import {
   listAllUsers,
   updateUser,
   getSiteStats,
+  getAuditLog,
 } from '../controllers/adminController';
 import { createInvite, listInvites, revokeInvite } from '../controllers/inviteController';
 
@@ -21,6 +22,7 @@ adminRouter.post('/users/:id/reject', rejectUser);
 adminRouter.get('/users', listAllUsers);
 adminRouter.patch('/users/:id', updateUser);
 adminRouter.get('/stats', getSiteStats);
+adminRouter.get('/audit', getAuditLog);
 
 adminRouter.get('/invites', listInvites);
 adminRouter.post('/invites', createInvite);

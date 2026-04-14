@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 import { sendEmail, APP_URL } from '../lib/email';
+import { logAudit } from '../lib/audit';
 
 const updateUserSchema = z.object({
   role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']).optional(),
@@ -49,6 +50,14 @@ export async function approveUser(req: AuthRequest, res: Response): Promise<void
     select: { id: true, username: true, email: true, fullName: true, status: true, role: true },
   });
 
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'user.approve',
+    targetType: 'user',
+    targetId: user.id,
+    targetName: user.fullName,
+  });
+
   res.json(user);
 
   try {
@@ -85,6 +94,15 @@ export async function rejectUser(req: AuthRequest, res: Response): Promise<void>
       rejectionReason: result.data.reason ?? null,
     },
     select: { id: true, username: true, email: true, fullName: true, status: true },
+  });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'user.reject',
+    targetType: 'user',
+    targetId: user.id,
+    targetName: user.fullName,
+    meta: result.data.reason ? { reason: result.data.reason } : undefined,
   });
 
   res.json(user);
@@ -148,7 +166,46 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
     select: { id: true, username: true, email: true, fullName: true, role: true, status: true },
   });
 
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'user.update',
+    targetType: 'user',
+    targetId: user.id,
+    targetName: user.fullName,
+    meta: result.data as Record<string, unknown>,
+  });
+
   res.json(user);
+}
+
+// GET /api/admin/audit
+export async function getAuditLog(req: AuthRequest, res: Response): Promise<void> {
+  const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
+  const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit ?? '50'), 10)));
+  const skip = (page - 1) * limit;
+
+  const where: Record<string, unknown> = {};
+  if (req.query.action) {
+    where.action = { startsWith: String(req.query.action) };
+  }
+  if (req.query.targetType) {
+    where.targetType = String(req.query.targetType);
+  }
+
+  const [logs, total] = await Promise.all([
+    prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+      include: {
+        actor: { select: { username: true, fullName: true } },
+      },
+    }),
+    prisma.auditLog.count({ where }),
+  ]);
+
+  res.json({ logs, total, page, limit });
 }
 
 // GET /api/admin/stats

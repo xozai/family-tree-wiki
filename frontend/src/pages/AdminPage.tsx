@@ -4,7 +4,7 @@ import api from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 import { format } from 'date-fns';
 
-type Tab = 'pending' | 'users' | 'stats' | 'invites';
+type Tab = 'pending' | 'users' | 'stats' | 'invites' | 'audit';
 
 interface PendingUser {
   id: string;
@@ -37,6 +37,17 @@ interface InviteToken {
   usedAt: string | null;
   createdBy: { fullName: string; username: string };
   usedBy: { fullName: string; username: string } | null;
+}
+
+interface AuditEntry {
+  id: string;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  targetName: string | null;
+  meta: Record<string, unknown> | null;
+  createdAt: string;
+  actor: { username: string; fullName: string } | null;
 }
 
 interface Stats {
@@ -79,10 +90,14 @@ export default function AdminPage() {
   const [inviteNote, setInviteNote] = useState('');
   const [inviteDays, setInviteDays] = useState(7);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditActionFilter, setAuditActionFilter] = useState('');
 
   if (user?.role !== 'ADMIN') return <Navigate to="/" replace />;
 
-  const loadTab = useCallback(async (t: Tab) => {
+  const loadTab = useCallback(async (t: Tab) => {  // eslint-disable-line react-hooks/exhaustive-deps
     setLoading(true);
     setActionMsg('');
     try {
@@ -95,6 +110,12 @@ export default function AdminPage() {
       } else if (t === 'invites') {
         const { data } = await api.get('/admin/invites');
         setInvites(data);
+      } else if (t === 'audit') {
+        const params: Record<string, string | number> = { page: auditPage, limit: 50 };
+        if (auditActionFilter) params.action = auditActionFilter;
+        const { data } = await api.get('/admin/audit', { params });
+        setAuditLogs(data.logs);
+        setAuditTotal(data.total);
       } else {
         const { data } = await api.get('/admin/stats');
         setStats(data);
@@ -104,7 +125,7 @@ export default function AdminPage() {
     }
   }, []);
 
-  useEffect(() => { loadTab(tab); }, [tab, loadTab]);
+  useEffect(() => { loadTab(tab); }, [tab, loadTab, auditPage, auditActionFilter]);
 
   async function approve(id: string) {
     await api.post(`/admin/users/${id}/approve`);
@@ -175,6 +196,7 @@ export default function AdminPage() {
           { id: 'users', label: 'All Users' },
           { id: 'invites', label: 'Invites' },
           { id: 'stats', label: 'Site Statistics' },
+          { id: 'audit', label: 'Audit Log' },
         ] as { id: Tab; label: string }[]).map(({ id, label }) => (
           <button
             key={id}
@@ -462,6 +484,112 @@ export default function AdminPage() {
                   </table>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── AUDIT LOG TAB ── */}
+          {tab === 'audit' && (
+            <div className="space-y-4">
+              {/* Filter bar */}
+              <div className="flex gap-3 items-end flex-wrap">
+                <div>
+                  <label className="text-xs text-stone-500 block mb-1">Filter by action</label>
+                  <select
+                    value={auditActionFilter}
+                    onChange={(e) => { setAuditActionFilter(e.target.value); setAuditPage(1); }}
+                    className="border border-stone-300 rounded-lg px-3 py-1.5 text-sm bg-white"
+                  >
+                    <option value="">All actions</option>
+                    <option value="member">Members</option>
+                    <option value="user">Users</option>
+                    <option value="media">Media</option>
+                    <option value="import">Imports</option>
+                  </select>
+                </div>
+                <span className="text-sm text-stone-400 pb-1.5">{auditTotal} total entries</span>
+              </div>
+
+              {/* Log table */}
+              <div className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+                {auditLogs.length === 0 ? (
+                  <div className="text-center text-stone-400 py-12 text-sm">No audit log entries yet.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-stone-50 border-b border-stone-200 text-left">
+                        <th className="px-4 py-3 font-medium text-stone-600">Timestamp</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Actor</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Action</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Target</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLogs.map((entry) => (
+                        <tr key={entry.id} className="border-b border-stone-100 hover:bg-stone-50">
+                          <td className="px-4 py-3 text-xs text-stone-400 whitespace-nowrap">
+                            {format(new Date(entry.createdAt), 'MMM d, yyyy · h:mm a')}
+                          </td>
+                          <td className="px-4 py-3">
+                            {entry.actor ? (
+                              <div>
+                                <div className="font-medium text-stone-800">{entry.actor.fullName}</div>
+                                <div className="text-xs text-stone-400">@{entry.actor.username}</div>
+                              </div>
+                            ) : (
+                              <span className="text-stone-400 italic text-xs">System</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-mono text-xs bg-stone-100 text-stone-700 px-2 py-0.5 rounded">
+                              {entry.action}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {entry.targetName ? (
+                              entry.targetType === 'member' && entry.targetId ? (
+                                <Link to={`/members/${entry.targetId}`} className="text-amber-700 hover:underline">
+                                  {entry.targetName}
+                                </Link>
+                              ) : (
+                                <span className="text-stone-700">{entry.targetName}</span>
+                              )
+                            ) : (
+                              <span className="text-stone-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-stone-400 max-w-xs truncate">
+                            {entry.meta ? JSON.stringify(entry.meta) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Pagination */}
+              {auditTotal > 50 && (
+                <div className="flex items-center justify-between text-sm">
+                  <button
+                    onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                    disabled={auditPage === 1}
+                    className="px-3 py-1.5 border border-stone-300 rounded-lg disabled:opacity-40 hover:bg-stone-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-stone-500">
+                    Page {auditPage} of {Math.ceil(auditTotal / 50)}
+                  </span>
+                  <button
+                    onClick={() => setAuditPage((p) => p + 1)}
+                    disabled={auditPage >= Math.ceil(auditTotal / 50)}
+                    className="px-3 py-1.5 border border-stone-300 rounded-lg disabled:opacity-40 hover:bg-stone-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

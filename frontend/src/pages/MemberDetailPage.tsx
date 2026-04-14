@@ -91,6 +91,8 @@ export default function MemberDetailPage() {
   const [error, setError] = useState('');
   const [activePhoto, setActivePhoto] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [deletingPhoto, setDeletingPhoto] = useState<string | null>(null);
+  const [settingPrimary, setSettingPrimary] = useState<string | null>(null);
 
   useEffect(() => {
     api.get(`/members/${id}`)
@@ -102,6 +104,31 @@ export default function MemberDetailPage() {
     if (!window.confirm('Delete this profile permanently?')) return;
     await api.delete(`/members/${id}`);
     navigate('/members');
+  }
+
+  async function handleDeletePhoto(mediaId: string) {
+    if (!window.confirm('Delete this photo?')) return;
+    setDeletingPhoto(mediaId);
+    try {
+      await api.delete(`/media/${mediaId}`);
+      setMember((m) => m ? { ...m, media: m.media.filter((p) => p.id !== mediaId) } : m);
+      setActivePhoto(0);
+    } finally {
+      setDeletingPhoto(null);
+    }
+  }
+
+  async function handleSetPrimary(mediaId: string) {
+    setSettingPrimary(mediaId);
+    try {
+      await api.patch(`/media/${mediaId}/primary`);
+      setMember((m) => m ? {
+        ...m,
+        media: m.media.map((p) => ({ ...p, isPrimary: p.id === mediaId })),
+      } : m);
+    } finally {
+      setSettingPrimary(null);
+    }
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -329,13 +356,38 @@ export default function MemberDetailPage() {
           })()}
 
           {/* Photos gallery */}
-          {member.media.length > 1 && (
+          {member.media.length > 0 && (
             <div className="bg-white rounded-xl border border-stone-100 shadow-sm p-6">
               <h2 className="font-serif text-lg font-semibold text-stone-800 mb-3">Photos ({member.media.length})</h2>
               <div className="grid grid-cols-3 gap-2">
                 {member.media.map((m) => (
-                  <div key={m.id} className="aspect-square rounded-lg overflow-hidden bg-stone-100">
+                  <div key={m.id} className="group relative aspect-square rounded-lg overflow-hidden bg-stone-100">
                     <img src={m.thumbUrl ?? m.fileUrl} alt={m.caption || ''} className="w-full h-full object-cover" />
+                    {m.isPrimary && (
+                      <span className="absolute top-1 left-1 bg-amber-600 text-white text-xs px-1.5 py-0.5 rounded">
+                        Primary
+                      </span>
+                    )}
+                    {canEdit && (
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
+                        {!m.isPrimary && (
+                          <button
+                            onClick={() => handleSetPrimary(m.id)}
+                            disabled={settingPrimary === m.id}
+                            className="text-xs bg-white text-stone-800 px-2 py-1 rounded font-medium hover:bg-stone-100 disabled:opacity-50"
+                          >
+                            {settingPrimary === m.id ? 'Setting…' : 'Set Primary'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeletePhoto(m.id)}
+                          disabled={deletingPhoto === m.id}
+                          className="text-xs bg-red-600 text-white px-2 py-1 rounded font-medium hover:bg-red-500 disabled:opacity-50"
+                        >
+                          {deletingPhoto === m.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
