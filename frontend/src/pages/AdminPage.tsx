@@ -6,6 +6,12 @@ import { format } from 'date-fns';
 
 type Tab = 'pending' | 'users' | 'stats' | 'invites' | 'audit';
 
+interface MemberOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
 interface PendingUser {
   id: string;
   username: string;
@@ -26,6 +32,12 @@ interface User {
   rejectionReason: string | null;
   createdAt: string;
   approvedBy: { fullName: string; username: string } | null;
+  profileLinks: Array<{
+    id: string;
+    status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+    relationshipLabel: string | null;
+    familyMember: MemberOption;
+  }>;
 }
 
 interface InviteToken {
@@ -51,7 +63,7 @@ interface AuditEntry {
 }
 
 interface Stats {
-  members: { total: number; private: number; public: number };
+  members: { total: number; private: number; public: number; living: number; minors: number };
   users: { total: number; active: number; pending: number };
   relationships: number;
   media: number;
@@ -81,6 +93,9 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('pending');
   const [pending, setPending] = useState<PendingUser[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [allMembers, setAllMembers] = useState<MemberOption[]>([]);
+  const [profileLinkMemberIds, setProfileLinkMemberIds] = useState<Record<string, string>>({});
+  const [profileLinkLabels, setProfileLinkLabels] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [rejectId, setRejectId] = useState<string | null>(null);
@@ -105,8 +120,12 @@ export default function AdminPage() {
         const { data } = await api.get('/admin/users/pending');
         setPending(data);
       } else if (t === 'users') {
-        const { data } = await api.get('/admin/users');
-        setUsers(data);
+        const [{ data: usersData }, { data: membersData }] = await Promise.all([
+          api.get('/admin/users'),
+          api.get('/members', { params: { limit: 500, sortBy: 'lastName' } }),
+        ]);
+        setUsers(usersData);
+        setAllMembers(membersData.members);
       } else if (t === 'invites') {
         const { data } = await api.get('/admin/invites');
         setInvites(data);
@@ -169,6 +188,33 @@ export default function AdminPage() {
   async function changeStatus(id: string, status: string) {
     await api.patch(`/admin/users/${id}`, { status });
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, status: status as User['status'] } : u)));
+  }
+
+  async function linkUserProfile(userId: string) {
+    const familyMemberId = profileLinkMemberIds[userId];
+    if (!familyMemberId) return;
+    const relationshipLabel = profileLinkLabels[userId]?.trim() || undefined;
+    const { data } = await api.put(`/admin/users/${userId}/profile-links`, {
+      familyMemberId,
+      relationshipLabel,
+      status: 'VERIFIED',
+    });
+    setUsers((prev) => prev.map((u) => {
+      if (u.id !== userId) return u;
+      const nextLinks = u.profileLinks.filter((link) => link.id !== data.id);
+      return { ...u, profileLinks: [data, ...nextLinks] };
+    }));
+    setProfileLinkMemberIds((prev) => ({ ...prev, [userId]: '' }));
+    setProfileLinkLabels((prev) => ({ ...prev, [userId]: '' }));
+    setActionMsg('Profile link verified.');
+  }
+
+  async function removeProfileLink(userId: string, linkId: string) {
+    await api.delete(`/admin/users/${userId}/profile-links/${linkId}`);
+    setUsers((prev) => prev.map((u) => (
+      u.id === userId ? { ...u, profileLinks: u.profileLinks.filter((link) => link.id !== linkId) } : u
+    )));
+    setActionMsg('Profile link removed.');
   }
 
   return (
@@ -314,6 +360,7 @@ export default function AdminPage() {
                     <th className="px-4 py-3 font-medium text-stone-600">User</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Role</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Status</th>
+                    <th className="px-4 py-3 font-medium text-stone-600">Profile Links</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Joined</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Actions</th>
                   </tr>
@@ -360,6 +407,52 @@ export default function AdminPage() {
                             <option value="REJECTED">REJECTED</option>
                           </select>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        <div className="space-y-1 mb-2">
+                          {u.profileLinks.length === 0 ? (
+                            <div className="text-stone-400">No verified profile</div>
+                          ) : u.profileLinks.map((link) => (
+                            <div key={link.id} className="flex items-center gap-1.5 text-stone-600">
+                              <Link to={`/members/${link.familyMember.id}`} className="text-amber-700 hover:underline">
+                                {link.familyMember.firstName} {link.familyMember.lastName}
+                              </Link>
+                              <span className="text-stone-400">{link.relationshipLabel || link.status}</span>
+                              <button
+                                onClick={() => removeProfileLink(u.id, link.id)}
+                                className="text-red-400 hover:text-red-600"
+                                title="Remove profile link"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          <select
+                            value={profileLinkMemberIds[u.id] || ''}
+                            onChange={(e) => setProfileLinkMemberIds((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                            className="max-w-36 text-xs border border-stone-200 rounded px-2 py-1 bg-white"
+                          >
+                            <option value="">Link profile…</option>
+                            {allMembers.map((member) => (
+                              <option key={member.id} value={member.id}>{member.firstName} {member.lastName}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={profileLinkLabels[u.id] || ''}
+                            onChange={(e) => setProfileLinkLabels((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                            placeholder="label"
+                            className="w-20 text-xs border border-stone-200 rounded px-2 py-1"
+                          />
+                          <button
+                            onClick={() => linkUserProfile(u.id)}
+                            disabled={!profileLinkMemberIds[u.id]}
+                            className="text-xs border border-stone-300 rounded px-2 py-1 hover:bg-stone-50 disabled:opacity-40"
+                          >
+                            Link
+                          </button>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-stone-500 text-xs">
                         {format(new Date(u.createdAt), 'MMM d, yyyy')}
@@ -602,6 +695,8 @@ export default function AdminPage() {
                   { label: 'Total Members', value: stats.members.total, color: 'blue' },
                   { label: 'Public Profiles', value: stats.members.public, color: 'green' },
                   { label: 'Private Profiles', value: stats.members.private, color: 'amber' },
+                  { label: 'Living People', value: stats.members.living, color: 'blue' },
+                  { label: 'Minors', value: stats.members.minors, color: 'amber' },
                   { label: 'Relationships', value: stats.relationships, color: 'purple' },
                   { label: 'Active Users', value: stats.users.active, color: 'green' },
                   { label: 'Pending Approval', value: stats.users.pending, color: 'yellow' },
