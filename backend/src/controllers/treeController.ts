@@ -54,7 +54,8 @@ function toNode(
     lastName: m.lastName,
     birthYear: m.birthDate ? m.birthDate.getFullYear() : null,
     deathYear: m.deathDate ? m.deathDate.getFullYear() : null,
-    photo: m.media[0]?.fileUrl ?? null,
+    // Tree SVG images cannot attach Authorization headers; omit photos instead of leaking upload URLs.
+    photo: null,
     children,
   };
 }

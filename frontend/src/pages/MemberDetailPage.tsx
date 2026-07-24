@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import api from '../lib/api';
+import AuthImage from '../components/AuthImage';
 import { useAuthStore } from '../stores/authStore';
 import { format } from 'date-fns';
 
@@ -212,7 +213,7 @@ export default function MemberDetailPage() {
           <div className="bg-white rounded-xl border border-stone-100 shadow-sm overflow-hidden">
             <div className="aspect-square bg-stone-100">
               {primaryPhoto ? (
-                <img src={member.media[activePhoto]?.fileUrl || primaryPhoto.fileUrl} alt="" className="w-full h-full object-cover" />
+                <AuthImage src={member.media[activePhoto]?.fileUrl || primaryPhoto.fileUrl} alt="" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-6xl text-stone-300">👤</div>
               )}
@@ -222,7 +223,7 @@ export default function MemberDetailPage() {
                 {member.media.map((m, i) => (
                   <button key={m.id} onClick={() => setActivePhoto(i)}
                     className={`w-10 h-10 rounded overflow-hidden flex-shrink-0 ring-2 ${i === activePhoto ? 'ring-warm-500' : 'ring-transparent'}`}>
-                    <img src={m.thumbUrl ?? m.fileUrl} alt="" className="w-full h-full object-cover" />
+                    <AuthImage src={m.thumbUrl ?? m.fileUrl} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
@@ -347,7 +348,7 @@ export default function MemberDetailPage() {
                       className="flex items-center gap-3 p-3 rounded-lg border border-stone-100 hover:bg-stone-50 transition-colors">
                       <div className="w-9 h-9 rounded-full bg-stone-100 overflow-hidden flex-shrink-0">
                         {entry.otherPerson.media[0] ? (
-                          <img src={entry.otherPerson.media[0].thumbUrl ?? entry.otherPerson.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
+                          <AuthImage src={entry.otherPerson.media[0].thumbUrl ?? entry.otherPerson.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-stone-300">👤</div>
                         )}
@@ -370,7 +371,7 @@ export default function MemberDetailPage() {
               <div className="grid grid-cols-3 gap-2">
                 {member.media.map((m) => (
                   <div key={m.id} className="group relative aspect-square rounded-lg overflow-hidden bg-stone-100">
-                    <img src={m.thumbUrl ?? m.fileUrl} alt={m.caption || ''} className="w-full h-full object-cover" />
+                    <AuthImage src={m.thumbUrl ?? m.fileUrl} alt={m.caption || ''} className="w-full h-full object-cover" />
                     {m.isPrimary && (
                       <span className="absolute top-1 left-1 bg-amber-600 text-white text-xs px-1.5 py-0.5 rounded">
                         Primary
