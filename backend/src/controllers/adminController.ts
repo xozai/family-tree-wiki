@@ -10,6 +10,12 @@ const updateUserSchema = z.object({
   status: z.enum(['ACTIVE', 'PENDING', 'REJECTED']).optional(),
 });
 
+const profileLinkSchema = z.object({
+  familyMemberId: z.string().uuid(),
+  status: z.enum(['PENDING', 'VERIFIED', 'REJECTED']).default('VERIFIED'),
+  relationshipLabel: z.string().max(200).optional(),
+});
+
 const rejectSchema = z.object({
   reason: z.string().max(500).optional(),
 });
@@ -136,6 +142,14 @@ export async function listAllUsers(_req: AuthRequest, res: Response): Promise<vo
       rejectionReason: true,
       createdAt: true,
       approvedBy: { select: { fullName: true, username: true } },
+      profileLinks: {
+        select: {
+          id: true,
+          status: true,
+          relationshipLabel: true,
+          familyMember: { select: { id: true, firstName: true, lastName: true } },
+        },
+      },
     },
   });
   res.json(users);
@@ -178,6 +192,103 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
   res.json(user);
 }
 
+// GET /api/admin/users/:id/profile-links
+export async function listUserProfileLinks(req: AuthRequest, res: Response): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  const links = await prisma.userProfileLink.findMany({
+    where: { userId: req.params.id },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      familyMember: { select: { id: true, firstName: true, lastName: true, privacyLevel: true } },
+    },
+  });
+  res.json(links);
+}
+
+// PUT /api/admin/users/:id/profile-links
+export async function upsertUserProfileLink(req: AuthRequest, res: Response): Promise<void> {
+  const result = profileLinkSchema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    return;
+  }
+
+  const [user, member] = await Promise.all([
+    prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, fullName: true } }),
+    prisma.familyMember.findUnique({ where: { id: result.data.familyMemberId }, select: { id: true, firstName: true, lastName: true } }),
+  ]);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  if (!member) {
+    res.status(404).json({ error: 'Family member not found' });
+    return;
+  }
+
+  const link = await prisma.userProfileLink.upsert({
+    where: { userId_familyMemberId: { userId: req.params.id, familyMemberId: result.data.familyMemberId } },
+    update: {
+      status: result.data.status,
+      relationshipLabel: result.data.relationshipLabel ?? null,
+      verifiedById: result.data.status === 'VERIFIED' ? req.user!.userId : null,
+      verifiedAt: result.data.status === 'VERIFIED' ? new Date() : null,
+    },
+    create: {
+      userId: req.params.id,
+      familyMemberId: result.data.familyMemberId,
+      status: result.data.status,
+      relationshipLabel: result.data.relationshipLabel ?? null,
+      verifiedById: result.data.status === 'VERIFIED' ? req.user!.userId : null,
+      verifiedAt: result.data.status === 'VERIFIED' ? new Date() : null,
+    },
+    include: {
+      familyMember: { select: { id: true, firstName: true, lastName: true, privacyLevel: true } },
+    },
+  });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'user.profile_link.upsert',
+    targetType: 'user',
+    targetId: req.params.id,
+    targetName: user.fullName,
+    meta: { familyMemberId: member.id, status: result.data.status },
+  });
+
+  res.json(link);
+}
+
+// DELETE /api/admin/users/:id/profile-links/:linkId
+export async function deleteUserProfileLink(req: AuthRequest, res: Response): Promise<void> {
+  const link = await prisma.userProfileLink.findFirst({
+    where: { id: req.params.linkId, userId: req.params.id },
+    include: { user: { select: { fullName: true } } },
+  });
+  if (!link) {
+    res.status(404).json({ error: 'Profile link not found' });
+    return;
+  }
+
+  await prisma.userProfileLink.delete({ where: { id: link.id } });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'user.profile_link.delete',
+    targetType: 'user',
+    targetId: req.params.id,
+    targetName: link.user.fullName,
+    meta: { familyMemberId: link.familyMemberId },
+  });
+
+  res.json({ message: 'Profile link deleted' });
+}
+
 // GET /api/admin/audit
 export async function getAuditLog(req: AuthRequest, res: Response): Promise<void> {
   const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
@@ -213,6 +324,8 @@ export async function getSiteStats(_req: AuthRequest, res: Response): Promise<vo
   const [
     totalMembers,
     privateMembers,
+    livingMembers,
+    minorMembers,
     totalUsers,
     activeUsers,
     pendingUsers,
@@ -222,6 +335,8 @@ export async function getSiteStats(_req: AuthRequest, res: Response): Promise<vo
   ] = await Promise.all([
     prisma.familyMember.count(),
     prisma.familyMember.count({ where: { privacyLevel: 'PRIVATE' } }),
+    prisma.familyMember.count({ where: { isLiving: true } }),
+    prisma.familyMember.count({ where: { isMinor: true } }),
     prisma.user.count(),
     prisma.user.count({ where: { status: 'ACTIVE' } }),
     prisma.user.count({ where: { status: 'PENDING' } }),
@@ -238,7 +353,13 @@ export async function getSiteStats(_req: AuthRequest, res: Response): Promise<vo
   ]);
 
   res.json({
-    members: { total: totalMembers, private: privateMembers, public: totalMembers - privateMembers },
+    members: {
+      total: totalMembers,
+      private: privateMembers,
+      public: totalMembers - privateMembers,
+      living: livingMembers,
+      minors: minorMembers,
+    },
     users: { total: totalUsers, active: activeUsers, pending: pendingUsers },
     relationships: totalRelationships,
     media: totalMedia,

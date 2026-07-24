@@ -49,6 +49,8 @@ interface Member {
   education: string | null;
   achievements: string | null;
   privacyLevel: string;
+  isLiving: boolean;
+  isMinor: boolean;
   updatedAt: string;
   media: Media[];
   tags: Array<{ tag: { name: string } }>;
@@ -169,6 +171,12 @@ export default function MemberDetailPage() {
           )}
           {member.privacyLevel === 'PRIVATE' && (
             <span className="inline-block mt-1 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">Private Profile</span>
+          )}
+          {member.isLiving && (
+            <span className="inline-block mt-1 ml-1 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Living</span>
+          )}
+          {member.isMinor && (
+            <span className="inline-block mt-1 ml-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Minor</span>
           )}
         </div>
         <div className="flex gap-2 flex-wrap">

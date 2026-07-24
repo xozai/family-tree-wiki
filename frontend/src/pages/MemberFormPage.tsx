@@ -28,6 +28,8 @@ interface FormData {
   education: string;
   achievements: string;
   privacyLevel: 'PUBLIC' | 'PRIVATE';
+  isLiving: boolean;
+  isMinor: boolean;
   tags: string;
   editSummary: string;
 }
@@ -40,7 +42,7 @@ export default function MemberFormPage() {
   const [form, setForm] = useState<FormData>({
     firstName: '', lastName: '', maidenName: '', alternateNames: '', birthDate: '', birthPlace: '',
     deathDate: '', deathPlace: '', biography: '', occupation: '', education: '',
-    achievements: '', privacyLevel: 'PUBLIC', tags: '', editSummary: '',
+    achievements: '', privacyLevel: 'PUBLIC', isLiving: false, isMinor: false, tags: '', editSummary: '',
   });
   const [relationships, setRelationships] = useState<RelationshipInput[]>([]);
   const [allMembers, setAllMembers] = useState<MemberOption[]>([]);
@@ -65,6 +67,8 @@ export default function MemberFormPage() {
           education: data.education || '',
           achievements: data.achievements || '',
           privacyLevel: data.privacyLevel || 'PUBLIC',
+          isLiving: Boolean(data.isLiving),
+          isMinor: Boolean(data.isMinor),
           tags: data.tags?.map((t: { tag: { name: string } }) => t.tag.name).join(', ') || '',
           editSummary: '',
         });
@@ -79,7 +83,9 @@ export default function MemberFormPage() {
   }, [id, isEdit]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    const { name, type, value } = e.target;
+    const nextValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+    setForm((f) => ({ ...f, [name]: nextValue }));
   }
 
   function addRelationship() {
@@ -242,10 +248,18 @@ export default function MemberFormPage() {
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Privacy Level</label>
               <select name="privacyLevel" value={form.privacyLevel} onChange={handleChange} className={inputClass}>
-                <option value="PUBLIC">Public (all members)</option>
-                <option value="PRIVATE">Private (admins only)</option>
+                <option value="PUBLIC">Public (all approved family users)</option>
+                <option value="PRIVATE">Private (relationship-visible users and admins)</option>
               </select>
             </div>
+            <label className="flex items-center gap-2 text-sm text-stone-700">
+              <input type="checkbox" name="isLiving" checked={form.isLiving} onChange={handleChange} className="rounded border-stone-300" />
+              Living person — redact sensitive fields for unrelated viewers
+            </label>
+            <label className="flex items-center gap-2 text-sm text-stone-700">
+              <input type="checkbox" name="isMinor" checked={form.isMinor} onChange={handleChange} className="rounded border-stone-300" />
+              Minor — hide photos, biography, and birth details by default
+            </label>
           </div>
           <div>
             <label className="block text-sm font-medium text-stone-700 mb-1">Edit Summary</label>

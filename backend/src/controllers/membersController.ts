@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAudit } from '../lib/audit';
+import { loadAccessContext, memberAccessWhere, redactMemberFields } from '../lib/accessControl';
 
 const CONTRADICTING_TYPES: Partial<Record<string, string[]>> = {
   PARENT: ['CHILD'],
@@ -48,6 +49,8 @@ const memberSchema = z.object({
   education: z.string().max(500).optional(),
   achievements: z.string().optional(),
   privacyLevel: z.enum(['PUBLIC', 'PRIVATE']).optional(),
+  isLiving: z.boolean().optional(),
+  isMinor: z.boolean().optional(),
   relationships: z.array(z.object({
     personBId: z.string().uuid(),
     relationshipType: z.enum(['PARENT', 'CHILD', 'SPOUSE', 'SIBLING']),
@@ -58,12 +61,9 @@ const memberSchema = z.object({
 });
 
 export async function listMembers(req: AuthRequest, res: Response): Promise<void> {
-  const canSeePrivate = req.user?.role === 'ADMIN' || req.user?.role === 'EDITOR';
   const { search, page = '1', limit = '20', tags, birthYearMin, birthYearMax, sortBy = 'lastName' } = req.query;
 
-  const AND: Record<string, unknown>[] = [];
-
-  if (!canSeePrivate) AND.push({ privacyLevel: 'PUBLIC' });
+  const AND: Record<string, unknown>[] = [await memberAccessWhere(req.user!)];
 
   if (search) {
     AND.push({
@@ -127,9 +127,9 @@ export async function listMembers(req: AuthRequest, res: Response): Promise<void
 }
 
 export async function getMember(req: AuthRequest, res: Response): Promise<void> {
-  const canSeePrivate = req.user?.role === 'ADMIN' || req.user?.role === 'EDITOR';
-  const member = await prisma.familyMember.findUnique({
-    where: { id: req.params.id },
+  const accessWhere = await memberAccessWhere(req.user!);
+  const member = await prisma.familyMember.findFirst({
+    where: { AND: [{ id: req.params.id }, accessWhere] },
     include: {
       media: true,
       tags: { include: { tag: true } },
@@ -144,17 +144,16 @@ export async function getMember(req: AuthRequest, res: Response): Promise<void> 
     res.status(404).json({ error: 'Member not found' });
     return;
   }
-  if (member.privacyLevel === 'PRIVATE' && !canSeePrivate) {
-    res.status(403).json({ error: 'This profile is private' });
-    return;
-  }
+  const context = await loadAccessContext(req.user!);
+  const canSeeAll = req.user?.role === 'ADMIN' || req.user?.role === 'EDITOR';
+  const canSeeRelated = (related: { id: string; privacyLevel: 'PUBLIC' | 'PRIVATE' }): boolean =>
+    canSeeAll || related.privacyLevel === 'PUBLIC' || context.visibleMemberIds.has(related.id);
 
-  // Filter private related members from VIEWER users
-  const result = canSeePrivate ? member : {
+  const result = redactMemberFields({
     ...member,
-    relationshipsAsA: member.relationshipsAsA.filter((r) => r.personB.privacyLevel !== 'PRIVATE'),
-    relationshipsAsB: member.relationshipsAsB.filter((r) => r.personA.privacyLevel !== 'PRIVATE'),
-  };
+    relationshipsAsA: member.relationshipsAsA.filter((r) => canSeeRelated(r.personB)),
+    relationshipsAsB: member.relationshipsAsB.filter((r) => canSeeRelated(r.personA)),
+  }, context);
 
   res.json(result);
 }

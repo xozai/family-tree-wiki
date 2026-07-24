@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
+import { memberAccessWhere } from '../lib/accessControl';
 
 export interface TreeNode {
   id: string;
@@ -12,11 +13,11 @@ export interface TreeNode {
   children: TreeNode[];
 }
 
-// Build the full member + relationship map in one DB round-trip
-async function loadAll(isAdmin: boolean) {
+// Build the visible member + relationship map in one DB round-trip.
+async function loadAll(where: Awaited<ReturnType<typeof memberAccessWhere>>) {
   const [members, relationships] = await Promise.all([
     prisma.familyMember.findMany({
-      where: isAdmin ? {} : { privacyLevel: 'PUBLIC' },
+      where,
       select: {
         id: true,
         firstName: true,
@@ -107,11 +108,10 @@ function buildAncestors(
 
 // GET /api/members/:id/tree?mode=descendants|ancestors&depth=1-5
 export async function getMemberTree(req: AuthRequest, res: Response): Promise<void> {
-  const isAdmin = req.user?.role === 'ADMIN';
   const mode = req.query.mode === 'ancestors' ? 'ancestors' : 'descendants';
   const depth = Math.min(5, Math.max(1, parseInt(String(req.query.depth ?? '3'), 10)));
 
-  const { memberMap, relationships } = await loadAll(isAdmin);
+  const { memberMap, relationships } = await loadAll(await memberAccessWhere(req.user!));
 
   const root = memberMap.get(req.params.id);
   if (!root) {

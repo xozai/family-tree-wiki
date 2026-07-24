@@ -8,6 +8,9 @@ import {
   updateUser,
   getSiteStats,
   getAuditLog,
+  listUserProfileLinks,
+  upsertUserProfileLink,
+  deleteUserProfileLink,
 } from '../controllers/adminController';
 import { createInvite, listInvites, revokeInvite } from '../controllers/inviteController';
 
@@ -21,6 +24,9 @@ adminRouter.post('/users/:id/approve', approveUser);
 adminRouter.post('/users/:id/reject', rejectUser);
 adminRouter.get('/users', listAllUsers);
 adminRouter.patch('/users/:id', updateUser);
+adminRouter.get('/users/:id/profile-links', listUserProfileLinks);
+adminRouter.put('/users/:id/profile-links', upsertUserProfileLink);
+adminRouter.delete('/users/:id/profile-links/:linkId', deleteUserProfileLink);
 adminRouter.get('/stats', getSiteStats);
 adminRouter.get('/audit', getAuditLog);
 
