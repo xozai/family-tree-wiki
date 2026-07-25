@@ -109,7 +109,7 @@ export async function listMembers(req: AuthRequest, res: Response): Promise<void
   const limitNum = Math.min(100, parseInt(String(limit)));
   const skip = (pageNum - 1) * limitNum;
 
-  const [members, total] = await Promise.all([
+  const [members, total, context] = await Promise.all([
     prisma.familyMember.findMany({
       where,
       skip,
@@ -121,9 +121,10 @@ export async function listMembers(req: AuthRequest, res: Response): Promise<void
       },
     }),
     prisma.familyMember.count({ where }),
+    loadAccessContext(req.user!),
   ]);
 
-  res.json({ members, total, page: pageNum, limit: limitNum });
+  res.json({ members: members.map((member) => redactMemberFields(member, context)), total, page: pageNum, limit: limitNum });
 }
 
 export async function getMember(req: AuthRequest, res: Response): Promise<void> {
