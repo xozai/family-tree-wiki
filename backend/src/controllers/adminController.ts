@@ -16,6 +16,11 @@ const profileLinkSchema = z.object({
   relationshipLabel: z.string().max(200).optional(),
 });
 
+const editorGrantSchema = z.object({
+  familyMemberId: z.string().uuid(),
+  scope: z.enum(['PROFILE', 'SUBTREE', 'MEDIA']).default('PROFILE'),
+});
+
 const rejectSchema = z.object({
   reason: z.string().max(500).optional(),
 });
@@ -147,6 +152,13 @@ export async function listAllUsers(_req: AuthRequest, res: Response): Promise<vo
           id: true,
           status: true,
           relationshipLabel: true,
+          familyMember: { select: { id: true, firstName: true, lastName: true } },
+        },
+      },
+      editorGrants: {
+        select: {
+          id: true,
+          scope: true,
           familyMember: { select: { id: true, firstName: true, lastName: true } },
         },
       },
@@ -287,6 +299,106 @@ export async function deleteUserProfileLink(req: AuthRequest, res: Response): Pr
   });
 
   res.json({ message: 'Profile link deleted' });
+}
+
+// GET /api/admin/users/:id/editor-grants
+export async function listUserEditorGrants(req: AuthRequest, res: Response): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  const grants = await prisma.editorGrant.findMany({
+    where: { userId: req.params.id },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      familyMember: { select: { id: true, firstName: true, lastName: true, privacyLevel: true } },
+    },
+  });
+  res.json(grants);
+}
+
+// PUT /api/admin/users/:id/editor-grants
+export async function upsertUserEditorGrant(req: AuthRequest, res: Response): Promise<void> {
+  const result = editorGrantSchema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    return;
+  }
+
+  const [user, member] = await Promise.all([
+    prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, fullName: true, role: true } }),
+    prisma.familyMember.findUnique({ where: { id: result.data.familyMemberId }, select: { id: true, firstName: true, lastName: true } }),
+  ]);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  if (!member) {
+    res.status(404).json({ error: 'Family member not found' });
+    return;
+  }
+  if (user.role !== 'EDITOR') {
+    res.status(400).json({ error: 'Editor grants can only be assigned to EDITOR users' });
+    return;
+  }
+
+  const grant = await prisma.editorGrant.upsert({
+    where: {
+      userId_familyMemberId_scope: {
+        userId: req.params.id,
+        familyMemberId: result.data.familyMemberId,
+        scope: result.data.scope,
+      },
+    },
+    update: { grantedById: req.user!.userId },
+    create: {
+      userId: req.params.id,
+      familyMemberId: result.data.familyMemberId,
+      scope: result.data.scope,
+      grantedById: req.user!.userId,
+    },
+    include: {
+      familyMember: { select: { id: true, firstName: true, lastName: true, privacyLevel: true } },
+    },
+  });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'user.editor_grant.upsert',
+    targetType: 'user',
+    targetId: req.params.id,
+    targetName: user.fullName,
+    meta: { familyMemberId: member.id, scope: result.data.scope },
+  });
+
+  res.json(grant);
+}
+
+// DELETE /api/admin/users/:id/editor-grants/:grantId
+export async function deleteUserEditorGrant(req: AuthRequest, res: Response): Promise<void> {
+  const grant = await prisma.editorGrant.findFirst({
+    where: { id: req.params.grantId, userId: req.params.id },
+    include: { user: { select: { fullName: true } } },
+  });
+  if (!grant) {
+    res.status(404).json({ error: 'Editor grant not found' });
+    return;
+  }
+
+  await prisma.editorGrant.delete({ where: { id: grant.id } });
+
+  await logAudit({
+    actorId: req.user!.userId,
+    action: 'user.editor_grant.delete',
+    targetType: 'user',
+    targetId: req.params.id,
+    targetName: grant.user.fullName,
+    meta: { familyMemberId: grant.familyMemberId, scope: grant.scope },
+  });
+
+  res.json({ message: 'Editor grant deleted' });
 }
 
 // GET /api/admin/audit

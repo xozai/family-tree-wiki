@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   userProfileLink: {
     findMany: vi.fn(),
   },
+  editorGrant: {
+    findMany: vi.fn(),
+  },
   relationship: {
     findMany: vi.fn(),
   },
@@ -109,6 +112,7 @@ describe('relationship-aware member route controllers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.userProfileLink.findMany.mockResolvedValue([{ familyMemberId: 'self' }]);
+    mocks.editorGrant.findMany.mockResolvedValue([]);
     mocks.relationship.findMany.mockResolvedValue([]);
   });
 

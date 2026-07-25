@@ -11,6 +11,9 @@ import {
   listUserProfileLinks,
   upsertUserProfileLink,
   deleteUserProfileLink,
+  listUserEditorGrants,
+  upsertUserEditorGrant,
+  deleteUserEditorGrant,
 } from '../controllers/adminController';
 import { createInvite, listInvites, revokeInvite } from '../controllers/inviteController';
 
@@ -27,6 +30,9 @@ adminRouter.patch('/users/:id', updateUser);
 adminRouter.get('/users/:id/profile-links', listUserProfileLinks);
 adminRouter.put('/users/:id/profile-links', upsertUserProfileLink);
 adminRouter.delete('/users/:id/profile-links/:linkId', deleteUserProfileLink);
+adminRouter.get('/users/:id/editor-grants', listUserEditorGrants);
+adminRouter.put('/users/:id/editor-grants', upsertUserEditorGrant);
+adminRouter.delete('/users/:id/editor-grants/:grantId', deleteUserEditorGrant);
 adminRouter.get('/stats', getSiteStats);
 adminRouter.get('/audit', getAuditLog);
 

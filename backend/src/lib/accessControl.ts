@@ -2,6 +2,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import {
   canViewField,
+  canEditMember,
+  canManageMedia,
   canViewMember,
   visiblePersonIdsForViewer,
   type AccessMember,
@@ -52,10 +54,14 @@ function toAccessMember(member: RawMember): AccessMember {
 }
 
 export async function loadAccessContext(jwtUser: JwtPayload): Promise<AccessContext> {
-  const [links, relationships] = await Promise.all([
+  const [links, editorGrants, relationships] = await Promise.all([
     prisma.userProfileLink.findMany({
       where: { userId: jwtUser.userId, status: 'VERIFIED' },
       select: { familyMemberId: true },
+    }),
+    prisma.editorGrant.findMany({
+      where: { userId: jwtUser.userId },
+      select: { familyMemberId: true, scope: true },
     }),
     prisma.relationship.findMany({ select: RELATIONSHIP_SELECT }),
   ]);
@@ -64,6 +70,10 @@ export async function loadAccessContext(jwtUser: JwtPayload): Promise<AccessCont
     id: jwtUser.userId,
     role: jwtUser.role as AccessRole,
     linkedMemberIds: links.map((link) => link.familyMemberId),
+    editGrantMemberIds: editorGrants
+      .filter((grant) => grant.scope === 'PROFILE' || grant.scope === 'SUBTREE')
+      .map((grant) => grant.familyMemberId),
+    mediaGrantMemberIds: editorGrants.map((grant) => grant.familyMemberId),
   };
   const accessRelationships = relationships.map(toAccessRelationship);
 
@@ -75,7 +85,7 @@ export async function loadAccessContext(jwtUser: JwtPayload): Promise<AccessCont
 }
 
 export async function memberAccessWhere(jwtUser: JwtPayload): Promise<Prisma.FamilyMemberWhereInput> {
-  if (jwtUser.role === 'ADMIN' || jwtUser.role === 'EDITOR') return {};
+  if (jwtUser.role === 'ADMIN') return {};
   const context = await loadAccessContext(jwtUser);
   return {
     OR: [
@@ -90,6 +100,20 @@ export async function assertCanViewMember(jwtUser: JwtPayload, memberId: string)
   if (!member) return null;
   const context = await loadAccessContext(jwtUser);
   return canViewMember(context.user, toAccessMember(member), context.relationships) ? member : null;
+}
+
+export async function assertCanEditMember(jwtUser: JwtPayload, memberId: string): Promise<RawMember | null> {
+  const member = await prisma.familyMember.findUnique({ where: { id: memberId }, select: MEMBER_SELECT });
+  if (!member) return null;
+  const context = await loadAccessContext(jwtUser);
+  return canEditMember(context.user, toAccessMember(member), context.relationships) ? member : null;
+}
+
+export async function assertCanManageMedia(jwtUser: JwtPayload, memberId: string): Promise<RawMember | null> {
+  const member = await prisma.familyMember.findUnique({ where: { id: memberId }, select: MEMBER_SELECT });
+  if (!member) return null;
+  const context = await loadAccessContext(jwtUser);
+  return canManageMedia(context.user, toAccessMember(member), context.relationships) ? member : null;
 }
 
 export function redactMemberFields<T extends RawMember>(
