@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
-import { memberAccessWhere } from '../lib/accessControl';
+import { loadAccessContext, memberAccessWhere, type AccessContext } from '../lib/accessControl';
+import { canViewField } from '../lib/accessPolicy';
 
 export interface TreeNode {
   id: string;
@@ -44,16 +45,22 @@ function toNode(
     lastName: string;
     birthDate: Date | null;
     deathDate: Date | null;
+    privacyLevel: 'PUBLIC' | 'PRIVATE';
+    isLiving: boolean;
+    isMinor: boolean;
     media: { fileUrl: string }[];
   },
   children: TreeNode[] = [],
+  context?: AccessContext,
 ): TreeNode {
+  const canSeeBirth = !context || canViewField(context.user, m, 'birthDate', context.relationships);
+  const canSeeDeath = !context || canViewField(context.user, m, 'deathDate', context.relationships);
   return {
     id: m.id,
     firstName: m.firstName,
     lastName: m.lastName,
-    birthYear: m.birthDate ? m.birthDate.getFullYear() : null,
-    deathYear: m.deathDate ? m.deathDate.getFullYear() : null,
+    birthYear: canSeeBirth && m.birthDate ? m.birthDate.getFullYear() : null,
+    deathYear: canSeeDeath && m.deathDate ? m.deathDate.getFullYear() : null,
     // Tree SVG images cannot attach Authorization headers; omit photos instead of leaking upload URLs.
     photo: null,
     children,
@@ -66,21 +73,22 @@ function buildDescendants(
   memberMap: Map<string, ReturnType<typeof toNode> extends TreeNode ? never : Parameters<typeof toNode>[0]>,
   childrenOf: Map<string, string[]>,
   visited: Set<string>,
+  context: AccessContext,
 ): TreeNode | null {
   const m = memberMap.get(rootId);
   if (!m) return null;
-  if (visited.has(rootId)) return toNode(m); // circular — leaf
+  if (visited.has(rootId)) return toNode(m, [], context); // circular — leaf
   visited.add(rootId);
 
   const children: TreeNode[] = [];
   if (depth > 0) {
     for (const childId of childrenOf.get(rootId) ?? []) {
-      const child = buildDescendants(childId, depth - 1, memberMap, childrenOf, new Set(visited));
+      const child = buildDescendants(childId, depth - 1, memberMap, childrenOf, new Set(visited), context);
       if (child) children.push(child);
     }
   }
 
-  return toNode(m, children);
+  return toNode(m, children, context);
 }
 
 function buildAncestors(
@@ -89,22 +97,23 @@ function buildAncestors(
   memberMap: Parameters<typeof buildDescendants>[2],
   parentsOf: Map<string, string[]>,
   visited: Set<string>,
+  context: AccessContext,
 ): TreeNode | null {
   const m = memberMap.get(rootId);
   if (!m) return null;
-  if (visited.has(rootId)) return toNode(m);
+  if (visited.has(rootId)) return toNode(m, [], context);
   visited.add(rootId);
 
   // In D3 we abuse "children" to mean "ancestors" so the tree layout works
   const parents: TreeNode[] = [];
   if (depth > 0) {
     for (const parentId of parentsOf.get(rootId) ?? []) {
-      const parent = buildAncestors(parentId, depth - 1, memberMap, parentsOf, new Set(visited));
+      const parent = buildAncestors(parentId, depth - 1, memberMap, parentsOf, new Set(visited), context);
       if (parent) parents.push(parent);
     }
   }
 
-  return toNode(m, parents);
+  return toNode(m, parents, context);
 }
 
 // GET /api/members/:id/tree?mode=descendants|ancestors&depth=1-5
@@ -112,7 +121,11 @@ export async function getMemberTree(req: AuthRequest, res: Response): Promise<vo
   const mode = req.query.mode === 'ancestors' ? 'ancestors' : 'descendants';
   const depth = Math.min(5, Math.max(1, parseInt(String(req.query.depth ?? '3'), 10)));
 
-  const { memberMap, relationships } = await loadAll(await memberAccessWhere(req.user!));
+  const [accessWhere, context] = await Promise.all([
+    memberAccessWhere(req.user!),
+    loadAccessContext(req.user!),
+  ]);
+  const { memberMap, relationships } = await loadAll(accessWhere);
 
   const root = memberMap.get(req.params.id);
   if (!root) {
@@ -142,8 +155,8 @@ export async function getMemberTree(req: AuthRequest, res: Response): Promise<vo
 
   const tree =
     mode === 'ancestors'
-      ? buildAncestors(req.params.id, depth, memberMap as Parameters<typeof buildDescendants>[2], parentsOf, new Set())
-      : buildDescendants(req.params.id, depth, memberMap as Parameters<typeof buildDescendants>[2], childrenOf, new Set());
+      ? buildAncestors(req.params.id, depth, memberMap as Parameters<typeof buildDescendants>[2], parentsOf, new Set(), context)
+      : buildDescendants(req.params.id, depth, memberMap as Parameters<typeof buildDescendants>[2], childrenOf, new Set(), context);
 
   res.json({ mode, depth, root: tree });
 }
