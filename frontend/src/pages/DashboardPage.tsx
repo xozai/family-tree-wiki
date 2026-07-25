@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
+import AuthImage from '../components/AuthImage';
 import { useAuthStore } from '../stores/authStore';
 import { format } from 'date-fns';
 
@@ -76,7 +77,7 @@ export default function DashboardPage() {
               className="bg-white rounded-xl shadow-sm border border-stone-100 p-4 hover:shadow-md transition-shadow flex gap-3">
               <div className="w-12 h-12 rounded-full bg-stone-100 overflow-hidden flex-shrink-0">
                 {m.media[0] ? (
-                  <img src={m.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
+                  <AuthImage src={m.media[0].fileUrl} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-stone-400 text-lg">👤</div>
                 )}

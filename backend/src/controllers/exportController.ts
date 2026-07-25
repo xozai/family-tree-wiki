@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
+import { loadAccessContext, memberAccessWhere, redactMemberFields } from '../lib/accessControl';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
@@ -28,17 +29,20 @@ function wrapNote(level: number, text: string): string {
 
 // GET /api/export/gedcom
 export async function exportGedcom(req: AuthRequest, res: Response): Promise<void> {
-  const isAdmin = req.user?.role === 'ADMIN';
+  const accessWhere = await memberAccessWhere(req.user!);
+  const context = await loadAccessContext(req.user!);
 
-  const [members, relationships] = await Promise.all([
+  const [rawMembers, relationships] = await Promise.all([
     prisma.familyMember.findMany({
-      where: isAdmin ? {} : { privacyLevel: 'PUBLIC' },
+      where: accessWhere,
       orderBy: { lastName: 'asc' },
     }),
     prisma.relationship.findMany({
       where: { relationshipType: 'PARENT' }, // use PARENT only to build FAM records
     }),
   ]);
+
+  const members = rawMembers.map((member) => redactMemberFields(member, context));
 
   // Build a lookup: memberId → short GEDCOM ID like @I1@
   const idMap = new Map<string, string>();

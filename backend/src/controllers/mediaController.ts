@@ -5,8 +5,50 @@ import sharp from 'sharp';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAudit } from '../lib/audit';
+import { canViewField } from '../lib/accessPolicy';
+import { loadAccessContext } from '../lib/accessControl';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
+
+export async function serveUpload(req: AuthRequest, res: Response): Promise<void> {
+  const filename = req.params.filename;
+  if (!filename || filename !== path.basename(filename)) {
+    res.status(400).json({ error: 'Invalid upload path' });
+    return;
+  }
+
+  const uploadUrl = `/uploads/${filename}`;
+  const media = await prisma.media.findFirst({
+    where: { OR: [{ fileUrl: uploadUrl }, { thumbUrl: uploadUrl }] },
+    include: {
+      familyMember: {
+        select: { id: true, privacyLevel: true, isLiving: true, isMinor: true },
+      },
+    },
+  });
+
+  if (!media) {
+    res.status(404).json({ error: 'Upload not found' });
+    return;
+  }
+
+  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'EDITOR') {
+    const context = await loadAccessContext(req.user!);
+    const allowed = canViewField(context.user, media.familyMember, 'media', context.relationships);
+    if (!allowed) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+  }
+
+  const filePath = path.resolve(UPLOADS_DIR, filename);
+  if (!filePath.startsWith(path.resolve(UPLOADS_DIR) + path.sep) || !fs.existsSync(filePath)) {
+    res.status(404).json({ error: 'Upload file not found' });
+    return;
+  }
+
+  res.sendFile(filePath);
+}
 
 async function generateThumbnail(filePath: string, filename: string): Promise<string | null> {
   const thumbFilename = `thumb_${filename}`;

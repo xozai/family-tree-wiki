@@ -19,6 +19,12 @@ enum UserStatus {
   REJECTED
 }
 
+enum UserProfileLinkStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 enum PrivacyLevel {
   PUBLIC
   PRIVATE
@@ -56,6 +62,25 @@ model User {
   createdInvites       InviteToken[]  @relation("CreatedInvites")
   usedInvite           InviteToken?   @relation("UsedInvite")
   auditLogs            AuditLog[]
+  profileLinks         UserProfileLink[]
+}
+
+model UserProfileLink {
+  id             String                @id @default(uuid())
+  userId         String
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyMemberId String
+  familyMember   FamilyMember          @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  status         UserProfileLinkStatus @default(PENDING)
+  relationshipLabel String?
+  verifiedById   String?
+  verifiedAt     DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([userId, familyMemberId])
+  @@index([userId, status])
+  @@index([familyMemberId, status])
 }
 
 model InviteToken {
@@ -106,6 +131,8 @@ model FamilyMember {
   education     String?
   achievements  String?
   privacyLevel  PrivacyLevel @default(PUBLIC)
+  isLiving       Boolean      @default(false)
+  isMinor        Boolean      @default(false)
 
   createdById   String?
   createdBy     User?        @relation("CreatedBy", fields: [createdById], references: [id])
@@ -120,6 +147,7 @@ model FamilyMember {
   revisions         ProfileRevision[]
   media             Media[]
   tags              TagsOnMembers[]
+  userProfileLinks  UserProfileLink[]
 }
 
 model Relationship {

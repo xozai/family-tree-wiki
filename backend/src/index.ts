@@ -2,11 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import path from 'path';
 import fs from 'fs';
 import { authRouter } from './routes/auth';
+import { authenticate } from './middleware/authenticate';
 import { membersRouter } from './routes/members';
 import { mediaRouter } from './routes/media';
+import { serveUpload } from './controllers/mediaController';
 import { tagsRouter } from './routes/tags';
 import { importRouter } from './routes/import';
 import { adminRouter } from './routes/admin';
@@ -48,8 +49,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Serve uploads (only to authenticated users — handled in route)
-app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)));
+// Serve uploads through auth and relationship-aware media authorization.
+app.get('/uploads/:filename', authenticate, serveUpload);
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
 app.get('/api/health', healthCheck);
