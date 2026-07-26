@@ -204,15 +204,63 @@ Every push to `main` will SSH into the server, pull, rebuild, and health-check a
 
 ---
 
-## Roles
+## Roles and Admin Workflow
 
 | Role | Permissions |
 |---|---|
-| **ADMIN** | Full access — manage users, approve/reject registrations, create invites, edit all members, view site stats |
-| **EDITOR** | Create and edit family members, upload and delete photos, import GEDCOM files |
-| **VIEWER** | Read-only access to public member profiles, family tree, and photo gallery |
+| **ADMIN** | Full access — approve/reject registrations, create invites, manage users, link users to family profiles, assign editor grants, edit all members, import/export GEDCOM, view audit logs and site stats |
+| **EDITOR** | Limited editing role. Editors need explicit profile, subtree, or media grants before they can update member records or manage photos |
+| **VIEWER** | Read-only access to public profiles plus private/living/minor details only for their verified family profile and relationship-visible relatives |
 
-New registrations are assigned VIEWER role and require admin approval before they can log in.
+New registrations are assigned `VIEWER` and `PENDING` status until an admin approves them.
+
+### Registration and approval flow
+
+1. An admin creates an invite from **Admin → Invites**.
+2. The recipient registers with the invite link.
+3. The new account appears under **Admin → Pending**.
+4. The admin approves or rejects the account.
+5. Approved accounts can sign in, but they only receive viewer access until their role and family access are configured.
+
+### Profile links
+
+Profile links connect a user account to one or more `FamilyMember` records.
+
+- Add links from **Admin → Users → Access → Profile Links**.
+- Use `VERIFIED` links for confirmed identity/relationship mappings.
+- A verified profile link lets the user view their own sensitive fields and relationship-visible relatives.
+- Removing a profile link immediately removes that relationship-based visibility.
+
+### Scoped editor grants
+
+Editors do not get broad private-profile access by role alone. Admins must assign editor grants from **Admin → Users → Access → Editor Grants**.
+
+| Grant | Effect |
+|---|---|
+| `PROFILE` | Allows the editor to update that member profile and manage that profile's media |
+| `SUBTREE` | Reserved for subtree-scoped editing workflows; currently grants the same profile-level edit permission at the selected member root |
+| `MEDIA` | Allows the editor to view/manage media for that member without granting profile-field editing access |
+
+Grant rules:
+
+- Grants can only be assigned to users with the `EDITOR` role.
+- Admins can add or remove grants at any time.
+- Media-only grants expose media access only; private profile fields remain redacted unless another policy allows access.
+- `VIEWER` users cannot edit profiles, even if a grant record exists.
+
+### Privacy behavior
+
+- `PUBLIC` profiles are discoverable to signed-in users, but sensitive fields for living people and minors are redacted unless the viewer is self, admin, or relationship-authorized.
+- `PRIVATE` profiles are hidden unless the viewer is admin, self, relationship-authorized, or explicitly editor-granted for the needed action.
+- Family tree responses omit or redact hidden nodes so private/living/minor details do not leak through relatives.
+- GEDCOM exports are filtered/redacted for non-admin users.
+- Upload URLs enforce the same media visibility policy as the API.
+
+### GEDCOM and media operations
+
+- GEDCOM import is restricted to admins/editors, but editors should only be given this role after deciding which profile/media grants they need.
+- GEDCOM export is available to authenticated users and filtered by access policy.
+- Media upload, delete, and primary-photo changes require admin access or a scoped editor grant for that member.
 
 ---
 
