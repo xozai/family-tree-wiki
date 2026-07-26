@@ -38,6 +38,11 @@ interface User {
     relationshipLabel: string | null;
     familyMember: MemberOption;
   }>;
+  editorGrants: Array<{
+    id: string;
+    scope: 'PROFILE' | 'SUBTREE' | 'MEDIA';
+    familyMember: MemberOption;
+  }>;
 }
 
 interface InviteToken {
@@ -96,6 +101,8 @@ export default function AdminPage() {
   const [allMembers, setAllMembers] = useState<MemberOption[]>([]);
   const [profileLinkMemberIds, setProfileLinkMemberIds] = useState<Record<string, string>>({});
   const [profileLinkLabels, setProfileLinkLabels] = useState<Record<string, string>>({});
+  const [editorGrantMemberIds, setEditorGrantMemberIds] = useState<Record<string, string>>({});
+  const [editorGrantScopes, setEditorGrantScopes] = useState<Record<string, 'PROFILE' | 'SUBTREE' | 'MEDIA'>>({});
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [rejectId, setRejectId] = useState<string | null>(null);
@@ -215,6 +222,29 @@ export default function AdminPage() {
       u.id === userId ? { ...u, profileLinks: u.profileLinks.filter((link) => link.id !== linkId) } : u
     )));
     setActionMsg('Profile link removed.');
+  }
+
+  async function addEditorGrant(userId: string) {
+    const familyMemberId = editorGrantMemberIds[userId];
+    if (!familyMemberId) return;
+    const scope = editorGrantScopes[userId] || 'PROFILE';
+    const { data } = await api.put(`/admin/users/${userId}/editor-grants`, { familyMemberId, scope });
+    setUsers((prev) => prev.map((u) => {
+      if (u.id !== userId) return u;
+      const nextGrants = u.editorGrants.filter((grant) => grant.id !== data.id);
+      return { ...u, editorGrants: [data, ...nextGrants] };
+    }));
+    setEditorGrantMemberIds((prev) => ({ ...prev, [userId]: '' }));
+    setEditorGrantScopes((prev) => ({ ...prev, [userId]: 'PROFILE' }));
+    setActionMsg('Editor grant added.');
+  }
+
+  async function removeEditorGrant(userId: string, grantId: string) {
+    await api.delete(`/admin/users/${userId}/editor-grants/${grantId}`);
+    setUsers((prev) => prev.map((u) => (
+      u.id === userId ? { ...u, editorGrants: u.editorGrants.filter((grant) => grant.id !== grantId) } : u
+    )));
+    setActionMsg('Editor grant removed.');
   }
 
   return (
@@ -360,7 +390,7 @@ export default function AdminPage() {
                     <th className="px-4 py-3 font-medium text-stone-600">User</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Role</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Status</th>
-                    <th className="px-4 py-3 font-medium text-stone-600">Profile Links</th>
+                    <th className="px-4 py-3 font-medium text-stone-600">Access</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Joined</th>
                     <th className="px-4 py-3 font-medium text-stone-600">Actions</th>
                   </tr>
@@ -408,8 +438,9 @@ export default function AdminPage() {
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs">
-                        <div className="space-y-1 mb-2">
+                      <td className="px-4 py-3 text-xs min-w-96">
+                        <div className="text-[11px] uppercase tracking-wide text-stone-400 font-semibold mb-1">Profile Links</div>
+                        <div className="space-y-1 mb-3">
                           {u.profileLinks.length === 0 ? (
                             <div className="text-stone-400">No verified profile</div>
                           ) : u.profileLinks.map((link) => (
@@ -453,6 +484,58 @@ export default function AdminPage() {
                             Link
                           </button>
                         </div>
+                        <div className="text-[11px] uppercase tracking-wide text-stone-400 font-semibold mt-4 mb-1">Editor Grants</div>
+                        <div className="space-y-1 mb-2">
+                          {u.role !== 'EDITOR' ? (
+                            <div className="text-stone-400">Only EDITOR users can receive grants</div>
+                          ) : u.editorGrants.length === 0 ? (
+                            <div className="text-stone-400">No editor grants</div>
+                          ) : u.editorGrants.map((grant) => (
+                            <div key={grant.id} className="flex items-center gap-1.5 text-stone-600">
+                              <Link to={`/members/${grant.familyMember.id}`} className="text-blue-700 hover:underline">
+                                {grant.familyMember.firstName} {grant.familyMember.lastName}
+                              </Link>
+                              <span className="text-stone-400">{grant.scope}</span>
+                              <button
+                                onClick={() => removeEditorGrant(u.id, grant.id)}
+                                className="text-red-400 hover:text-red-600"
+                                title="Remove editor grant"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {u.role === 'EDITOR' && (
+                          <div className="flex gap-1">
+                            <select
+                              value={editorGrantMemberIds[u.id] || ''}
+                              onChange={(e) => setEditorGrantMemberIds((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                              className="max-w-36 text-xs border border-stone-200 rounded px-2 py-1 bg-white"
+                            >
+                              <option value="">Grant access…</option>
+                              {allMembers.map((member) => (
+                                <option key={member.id} value={member.id}>{member.firstName} {member.lastName}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={editorGrantScopes[u.id] || 'PROFILE'}
+                              onChange={(e) => setEditorGrantScopes((prev) => ({ ...prev, [u.id]: e.target.value as 'PROFILE' | 'SUBTREE' | 'MEDIA' }))}
+                              className="text-xs border border-stone-200 rounded px-2 py-1 bg-white"
+                            >
+                              <option value="PROFILE">Profile</option>
+                              <option value="SUBTREE">Subtree</option>
+                              <option value="MEDIA">Media</option>
+                            </select>
+                            <button
+                              onClick={() => addEditorGrant(u.id)}
+                              disabled={!editorGrantMemberIds[u.id]}
+                              className="text-xs border border-stone-300 rounded px-2 py-1 hover:bg-stone-50 disabled:opacity-40"
+                            >
+                              Grant
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-stone-500 text-xs">
                         {format(new Date(u.createdAt), 'MMM d, yyyy')}
