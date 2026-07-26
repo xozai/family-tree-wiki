@@ -17,6 +17,8 @@ export interface AccessUser {
   id: string;
   role: AccessRole;
   linkedMemberIds?: string[];
+  editGrantMemberIds?: string[];
+  mediaGrantMemberIds?: string[];
 }
 
 export interface AccessMember {
@@ -150,9 +152,29 @@ export function canViewMember(
   member: AccessMember,
   relationships: AccessRelationship[],
 ): boolean {
-  if (user.role === 'ADMIN' || user.role === 'EDITOR') return true;
+  if (user.role === 'ADMIN') return true;
   if (member.privacyLevel === 'PUBLIC') return true;
   return visiblePersonIdsForViewer(user, relationships).has(member.id);
+}
+
+export function canEditMember(
+  user: AccessUser,
+  member: AccessMember,
+  _relationships: AccessRelationship[],
+): boolean {
+  if (user.role === 'ADMIN') return true;
+  if (user.role !== 'EDITOR') return false;
+  return (user.editGrantMemberIds ?? []).includes(member.id);
+}
+
+export function canManageMedia(
+  user: AccessUser,
+  member: AccessMember,
+  _relationships: AccessRelationship[],
+): boolean {
+  if (canEditMember(user, member, _relationships)) return true;
+  if (user.role !== 'EDITOR') return false;
+  return (user.mediaGrantMemberIds ?? []).includes(member.id);
 }
 
 export function canViewField(
@@ -161,9 +183,12 @@ export function canViewField(
   field: SensitiveField,
   relationships: AccessRelationship[],
 ): boolean {
-  if (user.role === 'ADMIN' || user.role === 'EDITOR') return true;
+  if (user.role === 'ADMIN') return true;
   const isSelf = (user.linkedMemberIds ?? []).includes(member.id);
   if (isSelf) return true;
+  if (field === 'media' && user.role === 'EDITOR' && (user.mediaGrantMemberIds ?? []).includes(member.id)) {
+    return true;
+  }
 
   const relationshipVisible = visiblePersonIdsForViewer(user, relationships).has(member.id);
   if (!relationshipVisible) {

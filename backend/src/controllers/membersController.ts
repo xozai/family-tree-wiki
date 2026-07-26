@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAudit } from '../lib/audit';
-import { loadAccessContext, memberAccessWhere, redactMemberFields } from '../lib/accessControl';
+import { loadAccessContext, memberAccessWhere, redactMemberFields, assertCanEditMember } from '../lib/accessControl';
 
 const CONTRADICTING_TYPES: Partial<Record<string, string[]>> = {
   PARENT: ['CHILD'],
@@ -146,7 +146,7 @@ export async function getMember(req: AuthRequest, res: Response): Promise<void> 
     return;
   }
   const context = await loadAccessContext(req.user!);
-  const canSeeAll = req.user?.role === 'ADMIN' || req.user?.role === 'EDITOR';
+  const canSeeAll = req.user?.role === 'ADMIN';
   const canSeeRelated = (related: { id: string; privacyLevel: 'PUBLIC' | 'PRIVATE' }): boolean =>
     canSeeAll || related.privacyLevel === 'PUBLIC' || context.visibleMemberIds.has(related.id);
 
@@ -245,7 +245,7 @@ export async function updateMember(req: AuthRequest, res: Response): Promise<voi
     return;
   }
 
-  const existing = await prisma.familyMember.findUnique({ where: { id: req.params.id } });
+  const existing = await assertCanEditMember(req.user!, req.params.id);
   if (!existing) {
     res.status(404).json({ error: 'Member not found' });
     return;
@@ -357,6 +357,12 @@ export async function getMemberRevisions(req: AuthRequest, res: Response): Promi
 }
 
 export async function revertMemberRevision(req: AuthRequest, res: Response): Promise<void> {
+  const editable = await assertCanEditMember(req.user!, req.params.id);
+  if (!editable) {
+    res.status(404).json({ error: 'Revision not found' });
+    return;
+  }
+
   const revision = await prisma.profileRevision.findUnique({
     where: { id: req.params.revisionId },
   });

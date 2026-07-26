@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canEditMember,
+  canManageMedia,
   canViewMember,
   canViewField,
   visiblePersonIdsForViewer,
@@ -8,10 +10,17 @@ import {
   type AccessUser,
 } from '../lib/accessPolicy';
 
-const user = (role: AccessUser['role'], linkedMemberIds: string[] = []): AccessUser => ({
+const user = (
+  role: AccessUser['role'],
+  linkedMemberIds: string[] = [],
+  editGrantMemberIds: string[] = [],
+  mediaGrantMemberIds: string[] = [],
+): AccessUser => ({
   id: 'user-1',
   role,
   linkedMemberIds,
+  editGrantMemberIds,
+  mediaGrantMemberIds,
 });
 
 const member = (id: string, overrides: Partial<AccessMember> = {}): AccessMember => ({
@@ -72,7 +81,7 @@ describe('relationship access policy', () => {
     expect(visible.has('spouseSibling')).toBe(false);
   });
 
-  it('lets admins view private profiles but limits viewers to relationship-visible or public profiles', () => {
+  it('lets admins view private profiles but limits viewers and editors to relationship-visible or public profiles', () => {
     const relationships: AccessRelationship[] = [rel('parent', 'self', 'PARENT')];
     const privateParent = member('parent');
     const privateUnrelated = member('unrelated');
@@ -82,6 +91,8 @@ describe('relationship access policy', () => {
     expect(canViewMember(user('VIEWER', ['self']), privateParent, relationships)).toBe(true);
     expect(canViewMember(user('VIEWER', ['self']), privateUnrelated, relationships)).toBe(false);
     expect(canViewMember(user('VIEWER', ['self']), publicUnrelated, relationships)).toBe(true);
+    expect(canViewMember(user('EDITOR', ['self']), privateUnrelated, relationships)).toBe(false);
+    expect(canViewMember(user('EDITOR', ['self']), publicUnrelated, relationships)).toBe(true);
   });
 
   it('redacts sensitive fields for living people and minors unless the viewer is self, admin, or explicitly related', () => {
@@ -93,5 +104,26 @@ describe('relationship access policy', () => {
     expect(canViewField(user('VIEWER', ['self']), minorUnrelated, 'media', relationships)).toBe(false);
     expect(canViewField(user('ADMIN'), minorUnrelated, 'media', relationships)).toBe(true);
     expect(canViewField(user('VIEWER', ['living']), livingUnrelated, 'birthDate', relationships)).toBe(true);
+  });
+
+  it('allows editors to edit only profiles with explicit edit grants', () => {
+    const relationships: AccessRelationship[] = [];
+    const granted = member('granted');
+    const ungranted = member('ungranted');
+
+    expect(canEditMember(user('ADMIN'), ungranted, relationships)).toBe(true);
+    expect(canEditMember(user('EDITOR', [], ['granted']), granted, relationships)).toBe(true);
+    expect(canEditMember(user('EDITOR', [], ['granted']), ungranted, relationships)).toBe(false);
+    expect(canEditMember(user('VIEWER', [], ['granted']), granted, relationships)).toBe(false);
+  });
+
+  it('allows media-only editor grants to manage media without granting profile edits', () => {
+    const relationships: AccessRelationship[] = [];
+    const mediaGranted = member('media-granted', { privacyLevel: 'PRIVATE', isLiving: true });
+
+    expect(canEditMember(user('EDITOR', [], [], ['media-granted']), mediaGranted, relationships)).toBe(false);
+    expect(canManageMedia(user('EDITOR', [], [], ['media-granted']), mediaGranted, relationships)).toBe(true);
+    expect(canViewField(user('EDITOR', [], [], ['media-granted']), mediaGranted, 'media', relationships)).toBe(true);
+    expect(canViewField(user('EDITOR', [], [], ['media-granted']), mediaGranted, 'birthDate', relationships)).toBe(false);
   });
 });

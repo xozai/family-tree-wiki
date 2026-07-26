@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAudit } from '../lib/audit';
 import { canViewField } from '../lib/accessPolicy';
-import { loadAccessContext } from '../lib/accessControl';
+import { loadAccessContext, assertCanManageMedia } from '../lib/accessControl';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
 
@@ -32,7 +32,7 @@ export async function serveUpload(req: AuthRequest, res: Response): Promise<void
     return;
   }
 
-  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'EDITOR') {
+  if (req.user!.role !== 'ADMIN') {
     const context = await loadAccessContext(req.user!);
     const allowed = canViewField(context.user, media.familyMember, 'media', context.relationships);
     if (!allowed) {
@@ -70,7 +70,7 @@ export async function uploadMedia(req: AuthRequest, res: Response): Promise<void
     return;
   }
 
-  const member = await prisma.familyMember.findUnique({ where: { id: req.params.memberId } });
+  const member = await assertCanManageMedia(req.user!, req.params.memberId);
   if (!member) {
     fs.unlinkSync(req.file.path);
     res.status(404).json({ error: 'Member not found' });
@@ -123,6 +123,12 @@ export async function deleteMedia(req: AuthRequest, res: Response): Promise<void
     return;
   }
 
+  const editable = await assertCanManageMedia(req.user!, media.familyMemberId);
+  if (!editable) {
+    res.status(404).json({ error: 'Media not found' });
+    return;
+  }
+
   try {
     const filePath = path.resolve(UPLOADS_DIR, path.basename(media.fileUrl));
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -156,6 +162,12 @@ export async function deleteMedia(req: AuthRequest, res: Response): Promise<void
 export async function setPrimaryMedia(req: AuthRequest, res: Response): Promise<void> {
   const media = await prisma.media.findUnique({ where: { id: req.params.mediaId } });
   if (!media) {
+    res.status(404).json({ error: 'Media not found' });
+    return;
+  }
+
+  const editable = await assertCanManageMedia(req.user!, media.familyMemberId);
+  if (!editable) {
     res.status(404).json({ error: 'Media not found' });
     return;
   }

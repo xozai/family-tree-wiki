@@ -37,6 +37,12 @@ enum RelationshipType {
   SIBLING
 }
 
+enum EditorGrantScope {
+  PROFILE
+  SUBTREE
+  MEDIA
+}
+
 model User {
   id                   String    @id @default(uuid())
   username             String    @unique
@@ -63,6 +69,7 @@ model User {
   usedInvite           InviteToken?   @relation("UsedInvite")
   auditLogs            AuditLog[]
   profileLinks         UserProfileLink[]
+  editorGrants         EditorGrant[]
 }
 
 model UserProfileLink {
@@ -81,6 +88,22 @@ model UserProfileLink {
   @@unique([userId, familyMemberId])
   @@index([userId, status])
   @@index([familyMemberId, status])
+}
+
+model EditorGrant {
+  id             String           @id @default(uuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyMemberId String
+  familyMember   FamilyMember     @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  scope          EditorGrantScope @default(PROFILE)
+  grantedById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([userId, familyMemberId, scope])
+  @@index([userId, scope])
+  @@index([familyMemberId, scope])
 }
 
 model InviteToken {
@@ -148,6 +171,7 @@ model FamilyMember {
   media             Media[]
   tags              TagsOnMembers[]
   userProfileLinks  UserProfileLink[]
+  editorGrants      EditorGrant[]
 }
 
 model Relationship {
